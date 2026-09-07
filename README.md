@@ -19,7 +19,7 @@ Single ~17MB Go binary, no runtime dependencies — **~9MB RSS idle** in a real 
 ### Search and Discovery
 
 - **Pluggable indexer registry** -- driver kinds (Torznab proxy, DDL archive listing, web-scrape, Minerva JSON search) loaded at runtime from an embedded JSON registry; optionally overrideable via `GAMARR_SOURCES_URL` / `GAMARR_SOURCES_PATH`
-- **Minerva Archive** -- queries `https://minerva-archive.org/search/` via its JSON API (`/v1/api/rom/search`) with a per-system console filter; file bytes are fetched from the matching Myrient path so a hit is a single ROM, not a collection torrent
+- **Minerva Archive** -- queries `https://minerva-archive.org/search/` via its JSON API (`/v1/api/rom/search`) with a per-system console filter; file bytes are fetched from the matching Myrient path so a hit is a single ROM, not a collection torrent. The catalog is slow (often 30–60s per query); the driver waits up to 75s.
 - **24 gaming platforms** -- PC, Switch, PS1-PS5, PSP, PS Vita, Xbox, Xbox 360, Wii, Wii U, NES, SNES, N64, GameCube, Game Boy, GBA, DS, 3DS, Genesis, Saturn, Dreamcast, Atari 2600
 - **Search scoring** -- composite 0-100 score based on title match, platform relevance, seeder count, file size, and safety analysis
 - **Safety scoring** -- analyzes file names, sizes, and scene group trust to detect malware, crack-only uploads, and suspicious downloads

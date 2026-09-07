@@ -79,7 +79,12 @@ func SearchMinerva(reg *sources.Registry, query string, platformSlug string) []*
 		return nil
 	}
 
-	client := &http.Client{Timeout: 15 * time.Second}
+	// Minerva's index is a full-catalog scan; a console-filtered title
+	// search commonly takes 30–60s. The host is also slow to shake TLS
+	// (Go's default handshake budget is 10s and misses it).
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSHandshakeTimeout = 30 * time.Second
+	client := &http.Client{Timeout: 75 * time.Second, Transport: transport}
 	req, err := http.NewRequest("GET", searchURL+"?"+params.Encode(), nil)
 	if err != nil {
 		RecordSearchFail("minerva", err.Error())
@@ -109,6 +114,9 @@ func SearchMinerva(reg *sources.Registry, query string, platformSlug string) []*
 	if err := json.Unmarshal(body, &hits); err != nil {
 		RecordSearchFail("minerva", "invalid JSON: "+err.Error())
 		return nil
+	}
+	if len(hits) > 100 {
+		hits = hits[:100]
 	}
 
 	var results []*models.SearchResult
