@@ -6,7 +6,7 @@
 
 **The missing *arr for games.** Self-hosted game and ROM search, download, and library manager.
 
-Gamarr searches across all configured indexers (Torznab proxies, direct-download archive listings, web-scrape sources, and the Minerva Archive JSON index) in parallel for 24 platforms. Results are scored for safety and quality, downloads are managed through your choice of torrent or Usenet client, and files are automatically organized into your game vault and ROM library.
+Gamarr searches across all configured indexers (Torznab proxies, direct-download archive listings, web-scrape sources, and Minerva Archive browse listings) in parallel for 24 platforms. Results are scored for safety and quality, downloads are managed through your choice of torrent or Usenet client, and files are automatically organized into your game vault and ROM library.
 
 Single ~17MB Go binary, no runtime dependencies — **~9MB RSS idle** in a real homelab[^1], typically 10-30× lower than other self-hosted game library / ROM tools. Comfortable on a Pi or any thermally-constrained mini-PC.
 
@@ -18,8 +18,8 @@ Single ~17MB Go binary, no runtime dependencies — **~9MB RSS idle** in a real 
 
 ### Search and Discovery
 
-- **Pluggable indexer registry** -- driver kinds (Torznab proxy, DDL archive listing, web-scrape, Minerva JSON search) loaded at runtime from an embedded JSON registry; optionally overrideable via `GAMARR_SOURCES_URL` / `GAMARR_SOURCES_PATH`
-- **Minerva Archive** -- queries `https://minerva-archive.org/search/` via its JSON API (`/v1/api/rom/search`) with a per-system console filter; file bytes are fetched from the matching Myrient path so a hit is a single ROM, not a collection torrent. The catalog is slow (often 30–60s per query); the driver waits up to 75s.
+- **Pluggable indexer registry** -- driver kinds (Torznab proxy, DDL archive listing, web-scrape, Minerva browse listing) loaded at runtime from an embedded JSON registry; optionally overrideable via `GAMARR_SOURCES_URL` / `GAMARR_SOURCES_PATH`
+- **Minerva Archive** -- loads the per-system browse page (every title on that console), caches it for an hour, and matches locally — same shape as Myrient. File bytes are fetched from the matching Myrient path so a hit is a single ROM, not a collection torrent.
 - **24 gaming platforms** -- PC, Switch, PS1-PS5, PSP, PS Vita, Xbox, Xbox 360, Wii, Wii U, NES, SNES, N64, GameCube, Game Boy, GBA, DS, 3DS, Genesis, Saturn, Dreamcast, Atari 2600
 - **Search scoring** -- composite 0-100 score based on title match, platform relevance, seeder count, file size, and safety analysis
 - **Safety scoring** -- analyzes file names, sizes, and scene group trust to detect malware, crack-only uploads, and suspicious downloads
@@ -90,17 +90,17 @@ Single ~17MB Go binary, no runtime dependencies — **~9MB RSS idle** in a real 
 | Platform | Slug | DDL archive | Minerva | Torznab |
 |----------|------|-------------|---------|---------|
 | PC | `pc` | -- | -- | Yes |
-| Nintendo Switch | `switch` | -- | Yes | Yes |
+| Nintendo Switch | `switch` | -- | -- | Yes |
 | PS1 | `psx` | Yes | Yes | Yes |
 | PS2 | `ps2` | Yes | Yes | Yes |
 | PS3 | `ps3` | Yes | Yes | Yes |
-| PS4 | `ps4` | -- | Yes | Yes |
+| PS4 | `ps4` | -- | -- | Yes |
 | PSP | `psp` | Yes | Yes | Yes |
-| PS Vita | `psvita` | Yes | Yes | Yes |
+| PS Vita | `psvita` | Yes | -- | Yes |
 | Xbox | `xbox` | Yes | Yes | Yes |
 | Xbox 360 | `xbox360` | Yes | Yes | Yes |
 | Wii | `wii` | Yes | Yes | Yes |
-| Wii U | `wiiu` | Yes | Yes | Yes |
+| Wii U | `wiiu` | Yes | -- | Yes |
 | NES | `nes` | Yes | Yes | Yes |
 | SNES | `snes` | Yes | Yes | Yes |
 | Nintendo 64 | `n64` | Yes | Yes | Yes |

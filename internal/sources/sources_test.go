@@ -14,12 +14,12 @@ func TestDefault_EmbeddedRegistryIsComplete(t *testing.T) {
 		t.Fatalf("Default(): %v", err)
 	}
 	checks := map[string]bool{
-		"Myrient.BaseURL":          r.Myrient.BaseURL == "",
-		"Myrient.PlatformPaths":    len(r.Myrient.PlatformPaths) == 0,
-		"Vimm.BaseURL":             r.Vimm.BaseURL == "",
-		"Vimm.PlatformSystems":     len(r.Vimm.PlatformSystems) == 0,
-		"Minerva.BaseURL":          r.Minerva.BaseURL == "",
-		"Minerva.PlatformConsoles": len(r.Minerva.PlatformConsoles) == 0,
+		"Myrient.BaseURL":       r.Myrient.BaseURL == "",
+		"Myrient.PlatformPaths": len(r.Myrient.PlatformPaths) == 0,
+		"Vimm.BaseURL":          r.Vimm.BaseURL == "",
+		"Vimm.PlatformSystems":  len(r.Vimm.PlatformSystems) == 0,
+		"Minerva.BaseURL":       r.Minerva.BaseURL == "",
+		"Minerva.PlatformPaths": len(r.Minerva.PlatformPaths) == 0,
 	}
 	for field, empty := range checks {
 		if empty {
@@ -33,14 +33,14 @@ func TestDefault_EmbeddedRegistryIsComplete(t *testing.T) {
 	if r.Vimm.PlatformSystems["psx"] != "PS1" {
 		t.Errorf("Vimm.PlatformSystems[psx] missing or wrong: %q", r.Vimm.PlatformSystems["psx"])
 	}
-	if r.Minerva.PlatformConsoles["snes"] != "Super Nintendo Entertainment System" {
-		t.Errorf("Minerva.PlatformConsoles[snes] missing or wrong: %q", r.Minerva.PlatformConsoles["snes"])
+	if r.Minerva.PlatformPaths["snes"] != "No-Intro/Nintendo - Super Nintendo Entertainment System/" {
+		t.Errorf("Minerva.PlatformPaths[snes] missing or wrong: %q", r.Minerva.PlatformPaths["snes"])
 	}
 }
 
 func TestLoad(t *testing.T) {
 	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"version":3,"myrient":{"base_url":"https://url-example.test/","platform_paths":{"foo":"bar/"}},"vimm":{"base_url":"https://url-vimm.test/","platform_systems":{"foo":"FOO"}},"minerva":{"base_url":"https://url-minerva.test/","platform_consoles":{"foo":"FOO"}}}`))
+		_, _ = w.Write([]byte(`{"version":3,"myrient":{"base_url":"https://url-example.test/","platform_paths":{"foo":"bar/"}},"vimm":{"base_url":"https://url-vimm.test/","platform_systems":{"foo":"FOO"}},"minerva":{"base_url":"https://url-minerva.test/","platform_paths":{"foo":"bar/"}}}`))
 	}))
 	defer good.Close()
 	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(500) }))
@@ -48,7 +48,7 @@ func TestLoad(t *testing.T) {
 
 	dir := t.TempDir()
 	goodFile := filepath.Join(dir, "good.json")
-	_ = os.WriteFile(goodFile, []byte(`{"version":2,"myrient":{"base_url":"https://file-example.test/","platform_paths":{"abc":"def/"}},"vimm":{"base_url":"https://file-vimm.test/","platform_systems":{"abc":"ABC"}},"minerva":{"base_url":"https://file-minerva.test/","platform_consoles":{"abc":"ABC"}}}`), 0o644)
+	_ = os.WriteFile(goodFile, []byte(`{"version":2,"myrient":{"base_url":"https://file-example.test/","platform_paths":{"abc":"def/"}},"vimm":{"base_url":"https://file-vimm.test/","platform_systems":{"abc":"ABC"}},"minerva":{"base_url":"https://file-minerva.test/","platform_paths":{"abc":"def/"}}}`), 0o644)
 	brokenFile := filepath.Join(dir, "broken.json")
 	_ = os.WriteFile(brokenFile, []byte(`{not json`), 0o644)
 

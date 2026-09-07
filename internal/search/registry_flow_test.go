@@ -127,34 +127,32 @@ func TestRegistryFlow(t *testing.T) {
 		}
 	})
 
-	t.Run("minerva hits reg.Minerva.BaseURL", func(t *testing.T) {
-		srv := newRecordingServer(t, 200, `[]`)
+	t.Run("minerva hits reg.Minerva.BaseURL browse path", func(t *testing.T) {
+		ClearMinervaCache()
+		t.Cleanup(ClearMinervaCache)
+		srv := newRecordingServer(t, 200, `<div class="entry" data-name="game (usa).zip"><a href="/rom?id=42">Game (USA).zip</a></div>`)
 		reg, _ := sources.Default()
 		reg.Minerva.BaseURL = srv.URL + "/"
-		reg.Minerva.PlatformConsoles = map[string]string{"nes": "Nintendo Entertainment System"}
+		reg.Minerva.PlatformPaths = map[string]string{"nes": "No-Intro/Nintendo - Nintendo Entertainment System (Headered)/"}
 
 		_ = SearchMinerva(reg, "game", "nes")
 		if !srv.hit() {
 			t.Fatalf("Minerva did not call the registry URL")
 		}
 		got := srv.requestURIs()[0]
-		if !strings.Contains(got, "/v1/api/rom/search") {
-			t.Errorf("expected /v1/api/rom/search, got %q", got)
-		}
-		if !strings.Contains(got, "query=game") {
-			t.Errorf("expected query=game, got %q", got)
-		}
-		if !strings.Contains(got, "console=Nintendo") {
-			t.Errorf("expected console from registry, got %q", got)
+		if !strings.Contains(got, "/browse/./No-Intro/") {
+			t.Errorf("expected /browse/./No-Intro/ path, got %q", got)
 		}
 	})
 
 	t.Run("minerva GUID is built from reg.Minerva.BaseURL", func(t *testing.T) {
-		body := `[{"id":42,"full_path":"./No-Intro/Nintendo Entertainment System/A Game (USA).zip","magnet":""}]`
+		ClearMinervaCache()
+		t.Cleanup(ClearMinervaCache)
+		body := `<div class="entry" data-name="a game (usa).zip"><a href="/rom?id=42">A Game (USA).zip</a></div>`
 		srv := newRecordingServer(t, 200, body)
 		reg, _ := sources.Default()
 		reg.Minerva.BaseURL = srv.URL + "/"
-		reg.Minerva.PlatformConsoles = map[string]string{"nes": "Nintendo Entertainment System"}
+		reg.Minerva.PlatformPaths = map[string]string{"nes": "No-Intro/Nintendo - Nintendo Entertainment System (Headered)/"}
 
 		results := SearchMinerva(reg, "game", "nes")
 		if len(results) == 0 {

@@ -48,10 +48,10 @@ type VimmSpec struct {
 	PlatformAliases map[string]string `json:"platform_aliases,omitempty"`
 }
 
-// MinervaSpec carries the configurable bits of the Minerva Archive search driver.
+// MinervaSpec carries the configurable bits of the Minerva Archive browse driver.
 type MinervaSpec struct {
-	BaseURL          string            `json:"base_url"`
-	PlatformConsoles map[string]string `json:"platform_consoles"`
+	BaseURL       string            `json:"base_url"`
+	PlatformPaths map[string]string `json:"platform_paths"`
 }
 
 // Default returns the embedded fallback registry.
