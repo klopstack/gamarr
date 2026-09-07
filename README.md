@@ -96,11 +96,11 @@ Single ~17MB Go binary, no runtime dependencies — **~9MB RSS idle** in a real 
 | PS3 | `ps3` | Yes | Yes | Yes |
 | PS4 | `ps4` | -- | -- | Yes |
 | PSP | `psp` | Yes | Yes | Yes |
-| PS Vita | `psvita` | Yes | -- | Yes |
+| PS Vita | `psvita` | Yes | Yes | Yes |
 | Xbox | `xbox` | Yes | Yes | Yes |
 | Xbox 360 | `xbox360` | Yes | Yes | Yes |
 | Wii | `wii` | Yes | Yes | Yes |
-| Wii U | `wiiu` | Yes | -- | Yes |
+| Wii U | `wiiu` | Yes | Yes | Yes |
 | NES | `nes` | Yes | Yes | Yes |
 | SNES | `snes` | Yes | Yes | Yes |
 | Nintendo 64 | `n64` | Yes | Yes | Yes |
