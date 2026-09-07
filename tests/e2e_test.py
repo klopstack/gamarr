@@ -86,8 +86,8 @@ print("\n=== 3. SOURCES ===")
 
 def t_sources():
     d = get("/api/sources")
-    assert {s["name"] for s in d["sources"]} == {"prowlarr", "myrient", "vimm"}
-test("3 sources (prowlarr, myrient, vimm)", t_sources)
+    assert {s["name"] for s in d["sources"]} == {"prowlarr", "myrient", "vimm", "minerva"}
+test("4 sources (prowlarr, myrient, vimm, minerva)", t_sources)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 print("\n=== 4. SEARCH ===")
@@ -308,8 +308,8 @@ print("\n=== 10. DDL SOURCES ===")
 
 def t_ddl_builtin():
     d = get("/api/ddl-sources")
-    assert len([s for s in d["sources"] if s.get("builtin")]) == 2
-test("2 builtin DDL sources", t_ddl_builtin)
+    assert len([s for s in d["sources"] if s.get("builtin")]) == 3
+test("3 builtin DDL sources", t_ddl_builtin)
 
 def t_ddl_crud():
     post("/api/ddl-sources", {"name": "E2E", "url": "https://example.com"})
