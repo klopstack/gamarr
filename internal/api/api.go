@@ -508,10 +508,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		r.Score += boost
 	}
 
-	// Sort by score descending
-	sort.SliceStable(results, func(i, j int) bool {
-		return results[i].Score > results[j].Score
-	})
+	search.SortByScore(results)
 
 	// Cross-reference with library for duplicate detection
 	libraryMap := s.mgr.Jobs().GetAllLibraryTitles()
@@ -537,7 +534,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		{"name": "prowlarr", "label": "Prowlarr", "color": "#f97316", "source_type": "torrent", "enabled": s.cfg.HasProwlarr(), "indexers": prowlarrIndexers},
 		{"name": "myrient", "label": "Myrient", "color": "#10b981", "source_type": "ddl", "enabled": true},
 		{"name": "vimm", "label": "Vimm's Lair", "color": "#6366f1", "source_type": "ddl", "enabled": true},
-		{"name": "minerva", "label": "Minerva", "color": "#14b8a6", "source_type": "ddl", "enabled": true},
+		{"name": "minerva", "label": "Minerva", "color": "#14b8a6", "source_type": "torrent", "enabled": true},
 	}
 
 	writeJSON(w, 200, map[string]interface{}{
@@ -585,7 +582,7 @@ func (s *Server) handleSources(w http.ResponseWriter, r *http.Request) {
 		{"name": "prowlarr", "label": "Prowlarr", "color": "#f97316", "source_type": "torrent", "enabled": s.cfg.HasProwlarr()},
 		{"name": "myrient", "label": "Myrient", "color": "#10b981", "source_type": "ddl", "enabled": true},
 		{"name": "vimm", "label": "Vimm's Lair", "color": "#6366f1", "source_type": "ddl", "enabled": true},
-		{"name": "minerva", "label": "Minerva", "color": "#14b8a6", "source_type": "ddl", "enabled": true},
+		{"name": "minerva", "label": "Minerva", "color": "#14b8a6", "source_type": "torrent", "enabled": true},
 	}
 	// Attach health data to each source
 	for _, src := range sourceMeta {
@@ -867,8 +864,6 @@ func (s *Server) handleDDLSources(w http.ResponseWriter, r *http.Request) {
 			"platforms": search.MyrientPlatformSlugs(s.cfg.Sources)},
 		{"name": "Vimm's Lair", "url": s.cfg.Sources.Vimm.BaseURL, "type": "vimm", "builtin": true,
 			"platforms": search.VimmPlatformSlugs(s.cfg.Sources)},
-		{"name": "Minerva", "url": s.cfg.Sources.Minerva.BaseURL, "type": "minerva", "builtin": true,
-			"platforms": search.MinervaPlatformSlugs(s.cfg.Sources)},
 	}
 	custom := s.mgr.LoadDDLSources()
 	all := append(builtIn, custom...)
