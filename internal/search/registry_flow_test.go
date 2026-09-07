@@ -53,6 +53,7 @@ func TestRegistryFlow(t *testing.T) {
 	t.Cleanup(func() {
 		RecordSearchSuccess("myrient")
 		RecordSearchSuccess("vimm")
+		RecordSearchSuccess("minerva")
 	})
 
 	t.Run("myrient hits reg.Myrient.BaseURL + reg.Myrient.PlatformPaths[slug]", func(t *testing.T) {
@@ -125,10 +126,49 @@ func TestRegistryFlow(t *testing.T) {
 			t.Errorf("expected GUID built from registry base URL %q, got %q", wantPrefix, results[0].GUID)
 		}
 	})
+
+	t.Run("minerva hits reg.Minerva.BaseURL", func(t *testing.T) {
+		srv := newRecordingServer(t, 200, `[]`)
+		reg, _ := sources.Default()
+		reg.Minerva.BaseURL = srv.URL + "/"
+		reg.Minerva.PlatformConsoles = map[string]string{"nes": "Nintendo Entertainment System"}
+
+		_ = SearchMinerva(reg, "game", "nes")
+		if !srv.hit() {
+			t.Fatalf("Minerva did not call the registry URL")
+		}
+		got := srv.requestURIs()[0]
+		if !strings.Contains(got, "/v1/api/rom/search") {
+			t.Errorf("expected /v1/api/rom/search, got %q", got)
+		}
+		if !strings.Contains(got, "query=game") {
+			t.Errorf("expected query=game, got %q", got)
+		}
+		if !strings.Contains(got, "console=Nintendo") {
+			t.Errorf("expected console from registry, got %q", got)
+		}
+	})
+
+	t.Run("minerva GUID is built from reg.Minerva.BaseURL", func(t *testing.T) {
+		body := `[{"id":42,"full_path":"./No-Intro/Nintendo Entertainment System/A Game (USA).zip","magnet":""}]`
+		srv := newRecordingServer(t, 200, body)
+		reg, _ := sources.Default()
+		reg.Minerva.BaseURL = srv.URL + "/"
+		reg.Minerva.PlatformConsoles = map[string]string{"nes": "Nintendo Entertainment System"}
+
+		results := SearchMinerva(reg, "game", "nes")
+		if len(results) == 0 {
+			t.Fatal("expected at least one parsed result")
+		}
+		wantPrefix := srv.URL + "/rom?id=42"
+		if results[0].GUID != wantPrefix {
+			t.Errorf("expected GUID %q, got %q", wantPrefix, results[0].GUID)
+		}
+	})
 }
 
-// TestRegistryFlow_LegacyEnvOverride confirms MYRIENT_URL / VIMM_URL env vars
-// still take precedence over the registry value when set.
+// TestRegistryFlow_LegacyEnvOverride confirms MYRIENT_URL / VIMM_URL /
+// MINERVA_URL env vars still take precedence over the registry value when set.
 func TestRegistryFlow_LegacyEnvOverride(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -141,6 +181,8 @@ func TestRegistryFlow_LegacyEnvOverride(t *testing.T) {
 			func(r *sources.Registry) string { return r.Myrient.BaseURL }, "https://my-override.test/"},
 		{"VIMM_URL overrides Vimm.BaseURL", "VIMM_URL", "https://vimm-override.test/",
 			func(r *sources.Registry) string { return r.Vimm.BaseURL }, "https://vimm-override.test/"},
+		{"MINERVA_URL overrides Minerva.BaseURL", "MINERVA_URL", "https://minerva-override.test/",
+			func(r *sources.Registry) string { return r.Minerva.BaseURL }, "https://minerva-override.test/"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
