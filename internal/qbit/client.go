@@ -199,6 +199,12 @@ func (c *Client) ensureAuth() {
 
 // AddTorrent adds a torrent to qBittorrent.
 func (c *Client) AddTorrent(torrentURL, title, savePath, category string) bool {
+	return c.AddTorrentOpts(torrentURL, title, savePath, category, false)
+}
+
+// AddTorrentOpts adds a torrent. When paused is true the torrent is added
+// stopped so callers can set file priorities before any payload downloads.
+func (c *Client) AddTorrentOpts(torrentURL, title, savePath, category string, paused bool) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.ensureAuth()
@@ -207,6 +213,11 @@ func (c *Client) AddTorrent(torrentURL, title, savePath, category string) bool {
 		"urls":     {torrentURL},
 		"savepath": {savePath},
 		"category": {category},
+	}
+	if paused {
+		// qBittorrent ≤4.x uses paused; ≥5 prefers stopped. Send both.
+		data.Set("paused", "true")
+		data.Set("stopped", "true")
 	}
 	resp, err := c.postForm("/api/v2/torrents/add", data)
 	if err != nil {
@@ -222,10 +233,59 @@ func (c *Client) AddTorrent(torrentURL, title, savePath, category string) bool {
 		}
 		defer resp2.Body.Close()
 		body, _ := io.ReadAll(resp2.Body)
-		return addAccepted(resp2.StatusCode, body)
+		ok := addAccepted(resp2.StatusCode, body)
+		if !ok {
+			slog.Warn("qBittorrent add rejected", "status", resp2.StatusCode, "body", strings.TrimSpace(string(body)))
+		}
+		return ok
 	}
 	body, _ := io.ReadAll(resp.Body)
-	return addAccepted(resp.StatusCode, body)
+	ok := addAccepted(resp.StatusCode, body)
+	if !ok {
+		slog.Warn("qBittorrent add rejected", "status", resp.StatusCode, "body", strings.TrimSpace(string(body)))
+	}
+	return ok
+}
+
+// SetFilePriority sets the download priority for the given file indexes.
+// Priority 0 skips the file; 1 is normal.
+func (c *Client) SetFilePriority(hash string, indexes []int, priority int) bool {
+	if hash == "" || len(indexes) == 0 {
+		return true
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.ensureAuth()
+
+	ids := make([]string, len(indexes))
+	for i, idx := range indexes {
+		ids[i] = fmt.Sprintf("%d", idx)
+	}
+	data := url.Values{
+		"hash":     {hash},
+		"id":       {strings.Join(ids, "|")},
+		"priority": {fmt.Sprintf("%d", priority)},
+	}
+	status := c.postWithReauth("/api/v2/torrents/filePrio", data)
+	if !is2xx(status) {
+		slog.Warn("qBittorrent filePrio failed", "hash", hash, "status", status, "count", len(indexes), "priority", priority)
+		return false
+	}
+	return true
+}
+
+// StartTorrent resumes a stopped/paused torrent.
+func (c *Client) StartTorrent(hash string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.ensureAuth()
+
+	data := url.Values{"hashes": {hash}}
+	status := c.postWithReauth("/api/v2/torrents/start", data)
+	if status == http.StatusNotFound {
+		status = c.postWithReauth("/api/v2/torrents/resume", data)
+	}
+	return is2xx(status)
 }
 
 // GetTorrents returns torrents, optionally filtered by category. An error means

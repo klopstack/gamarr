@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -119,7 +120,9 @@ func newJobID() string {
 
 // DownloadTorrent starts a torrent download.
 // Tries clients in order: qBittorrent -> Transmission -> Deluge (first available).
-func (m *Manager) DownloadTorrent(url, infoHash, title, platf, platSlug string, isPC bool) (string, error) {
+// When selectFiles is true (Minerva archive magnets), the torrent is added
+// paused, matching files are prioritized, and then started.
+func (m *Manager) DownloadTorrent(url, infoHash, title, platf, platSlug string, isPC, selectFiles bool) (string, error) {
 	if url == "" {
 		return "", fmt.Errorf("no download URL")
 	}
@@ -149,7 +152,12 @@ func (m *Manager) DownloadTorrent(url, infoHash, title, platf, platSlug string, 
 		if infoHash == "" {
 			knownBefore = m.hashesInCategory()
 		}
-		ok := m.qb.AddTorrent(url, title, m.cfg.QBSavePath, m.cfg.QBCategory)
+		ok := m.qb.AddTorrentOpts(url, title, m.cfg.QBSavePath, m.cfg.QBCategory, selectFiles)
+		if !ok && infoHash != "" && m.hashInCategory(infoHash) {
+			// Archive magnets (Minerva) collide on every subsequent title.
+			ok = true
+			slog.Info("qBittorrent already has torrent, selecting files", "title", title, "hash", infoHash)
+		}
 		if ok {
 			added = true
 			clientUsed = "qBittorrent"
@@ -212,9 +220,141 @@ func (m *Manager) DownloadTorrent(url, infoHash, title, platf, platSlug string, 
 				slog.Warn("no infohash from client, matching on title", "title", title)
 			}
 		}
+		if selectFiles && clientUsed == "qBittorrent" && hash != "" {
+			m.jobs.Update(jobID, "detail", "Selecting files in archive torrent...")
+			if err := m.selectArchiveFiles(hash, title, jobID); err != nil {
+				slog.Warn("archive file selection failed", "title", title, "hash", hash, "error", err)
+			}
+			m.qb.StartTorrent(hash)
+		}
 		m.watchGameTorrent(jobID, hash, title, platf, platSlug, isPC)
 	}()
 	return jobID, nil
+}
+
+// hashInCategory reports whether qBittorrent already holds this infohash in the
+// configured category.
+func (m *Manager) hashInCategory(infoHash string) bool {
+	if infoHash == "" || m.qb == nil {
+		return false
+	}
+	torrents, err := m.qb.GetTorrents(m.cfg.QBCategory)
+	if err != nil {
+		return false
+	}
+	for _, t := range torrents {
+		if strings.EqualFold(t.Hash, infoHash) {
+			return true
+		}
+	}
+	return false
+}
+
+// selectArchiveFiles waits for metadata, then sets file priorities so only the
+// ROM matching title (plus files wanted by other active jobs on this hash) download.
+func (m *Manager) selectArchiveFiles(hash, title, jobID string) error {
+	files := m.waitTorrentFiles(hash)
+	if files == nil {
+		return fmt.Errorf("file list unavailable")
+	}
+	if len(files) <= 1 {
+		return nil
+	}
+	matched := matchTorrentFileIndexes(files, title)
+	if len(matched) == 0 {
+		return fmt.Errorf("no file matching %q among %d files", title, len(files))
+	}
+	wanted := map[int]bool{}
+	for _, idx := range matched {
+		wanted[idx] = true
+	}
+	// Keep files other active jobs on this hash still need.
+	for _, item := range m.jobs.Items() {
+		if item.ID == jobID {
+			continue
+		}
+		status, _ := item.Data["status"].(string)
+		switch status {
+		case "downloading", "scanning", "organizing", "metadata", "queued":
+		default:
+			continue
+		}
+		ih, _ := item.Data["info_hash"].(string)
+		if !strings.EqualFold(ih, hash) {
+			continue
+		}
+		otherTitle, _ := item.Data["title"].(string)
+		for _, idx := range matchTorrentFileIndexes(files, otherTitle) {
+			wanted[idx] = true
+		}
+	}
+	var keep, skip []int
+	for _, f := range files {
+		idx := f.Index
+		if wanted[idx] {
+			keep = append(keep, idx)
+		} else {
+			skip = append(skip, idx)
+		}
+	}
+	if len(skip) > 0 && !m.qb.SetFilePriority(hash, skip, 0) {
+		return fmt.Errorf("failed to skip %d files", len(skip))
+	}
+	if len(keep) > 0 && !m.qb.SetFilePriority(hash, keep, 1) {
+		return fmt.Errorf("failed to enable %d files", len(keep))
+	}
+	slog.Info("archive file selection applied", "hash", hash, "title", title, "keep", len(keep), "skip", len(skip))
+	return nil
+}
+
+func (m *Manager) waitTorrentFiles(hash string) []qbit.TorrentFile {
+	for attempt := 0; attempt < 60; attempt++ {
+		files := m.qb.GetTorrentFiles(hash)
+		if files != nil && len(files) > 0 {
+			return files
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return m.qb.GetTorrentFiles(hash)
+}
+
+// matchTorrentFileIndexes returns torrent file indexes whose basename matches
+// the ROM title (Minerva titles are the filenames inside the archive).
+func matchTorrentFileIndexes(files []qbit.TorrentFile, title string) []int {
+	want := strings.ToLower(strings.TrimSpace(title))
+	if want == "" {
+		return nil
+	}
+	wantBase := strings.ToLower(path.Base(want))
+	wantStem := stripFileExt(wantBase)
+	allZero := true
+	for _, f := range files {
+		if f.Index != 0 {
+			allZero = false
+			break
+		}
+	}
+	usePos := allZero && len(files) > 1
+	var out []int
+	for i, f := range files {
+		idx := f.Index
+		if usePos {
+			idx = i
+		}
+		base := strings.ToLower(path.Base(f.Name))
+		if base == want || base == wantBase || (wantStem != "" && stripFileExt(base) == wantStem) {
+			out = append(out, idx)
+		}
+	}
+	return out
+}
+
+func stripFileExt(name string) string {
+	ext := path.Ext(name)
+	if ext == "" {
+		return name
+	}
+	return strings.TrimSuffix(name, ext)
 }
 
 // hashesInCategory snapshots the hashes the client already holds. A nil result
