@@ -52,7 +52,7 @@ func TestMinervaPlatformSlugs(t *testing.T) {
 	for _, s := range slugs {
 		found[s] = true
 	}
-	for _, want := range []string{"nes", "snes", "n64", "psx", "gba"} {
+	for _, want := range []string{"nes", "snes", "n64", "psx", "gba", "wiiu", "psvita"} {
 		if !found[want] {
 			t.Errorf("expected slug %q in Minerva platforms", want)
 		}
