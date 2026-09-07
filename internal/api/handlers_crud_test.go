@@ -333,23 +333,24 @@ func TestDownloadsClaimsAJobOnlyOnce(t *testing.T) {
 func TestDownloadsListClearAndDelete(t *testing.T) {
 	env := newTestEnv(t, nil)
 
-	// Seed jobs directly: one finished, one failed, one active.
+	// Seed jobs directly: one finished, one failed, one interrupted, one active.
 	env.jobs.Set("job-done", map[string]interface{}{"status": "completed", "title": "Done Game"})
 	env.jobs.Set("job-err", map[string]interface{}{"status": "error", "title": "Broken Game", "error": "boom"})
+	env.jobs.Set("job-int", map[string]interface{}{"status": "interrupted", "title": "Restarted Game", "error": "Interrupted by restart"})
 	env.jobs.Set("job-live", map[string]interface{}{"status": "downloading", "title": "Live Game"})
 
 	rr := env.do("GET", "/api/downloads", "")
 	wantStatus(t, rr, 200)
 	downloads, _ := decodeMap(t, rr)["downloads"].([]interface{})
-	if len(downloads) != 3 {
-		t.Fatalf("downloads = %d entries, want 3", len(downloads))
+	if len(downloads) != 4 {
+		t.Fatalf("downloads = %d entries, want 4", len(downloads))
 	}
 
-	t.Run("clear removes finished and errored jobs", func(t *testing.T) {
+	t.Run("clear removes finished, errored, and interrupted jobs", func(t *testing.T) {
 		rr := env.do("POST", "/api/downloads/clear", "")
 		wantStatus(t, rr, 200)
-		if m := decodeMap(t, rr); m["cleared"] != float64(2) {
-			t.Errorf("cleared = %v, want 2", m["cleared"])
+		if m := decodeMap(t, rr); m["cleared"] != float64(3) {
+			t.Errorf("cleared = %v, want 3", m["cleared"])
 		}
 	})
 

@@ -831,7 +831,7 @@ func (s *Server) handleClearFinished(w http.ResponseWriter, r *http.Request) {
 	cleared := 0
 	for _, item := range s.mgr.Jobs().Items() {
 		status, _ := item.Data["status"].(string)
-		if status == "completed" || status == "error" {
+		if status == "completed" || status == "error" || status == "interrupted" {
 			s.mgr.Jobs().Delete(item.ID)
 			cleared++
 		}
