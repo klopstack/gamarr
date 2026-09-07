@@ -1935,6 +1935,38 @@ func (m *Manager) organizeDDLFile(jobID, fp, title, platf, platSlug string, isPC
 	}
 }
 
+// dismissArchiveShellJobs drops torrent-named shell jobs once real ROM jobs
+// share the same infohash (orphan recovery used to mint these for Minerva).
+func (m *Manager) dismissArchiveShellJobs(hash, torrentName string) {
+	if hash == "" {
+		return
+	}
+	hasROM := false
+	var shells []string
+	for _, item := range m.jobs.Items() {
+		ih, _ := item.Data["info_hash"].(string)
+		if !strings.EqualFold(ih, hash) {
+			continue
+		}
+		title, _ := item.Data["title"].(string)
+		if title == "" {
+			continue
+		}
+		if strings.EqualFold(title, torrentName) || strings.EqualFold(title, "Minerva_Myrient") {
+			shells = append(shells, item.ID)
+			continue
+		}
+		hasROM = true
+	}
+	if !hasROM {
+		return
+	}
+	for _, id := range shells {
+		m.jobs.Delete(id)
+		slog.Info("dismissed archive shell job", "job_id", id, "hash", hash)
+	}
+}
+
 // RecoverOrphanedTorrents checks for existing game torrents and re-links them.
 func (m *Manager) RecoverOrphanedTorrents() {
 	if !m.cfg.HasQBittorrent() {
@@ -1980,6 +2012,7 @@ func (m *Manager) RecoverOrphanedTorrents() {
 	}
 
 	for _, t := range torrents {
+		m.dismissArchiveShellJobs(t.Hash, t.Name)
 		// Reuse the row already tracking this torrent. Recovery is not a
 		// once-per-install routine, so minting an id per pass accumulated a
 		// duplicate row per torrent every time it ran.
@@ -1994,7 +2027,15 @@ func (m *Manager) RecoverOrphanedTorrents() {
 				if status, _ := job["status"].(string); status == "completed" {
 					continue
 				}
+				// Archive magnets are claimed by ROM-titled jobs sharing one
+				// infohash. Never rewrite those titles to the torrent name.
+				title, _ := job["title"].(string)
+				if title != "" && !strings.EqualFold(title, t.Name) {
+					continue
+				}
 			}
+		} else if m.infoHashTracked(t.Hash) {
+			continue
 		} else {
 			jobID = newJobID()
 		}
