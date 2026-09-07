@@ -357,6 +357,34 @@ func stripFileExt(name string) string {
 	return strings.TrimSuffix(name, ext)
 }
 
+// TorrentFileForTitle returns the torrent file whose basename matches title.
+func TorrentFileForTitle(files []qbit.TorrentFile, title string) (qbit.TorrentFile, bool) {
+	idxs := matchTorrentFileIndexes(files, title)
+	if len(idxs) == 0 {
+		return qbit.TorrentFile{}, false
+	}
+	want := idxs[0]
+	usePos := len(files) > 1
+	if usePos {
+		for _, f := range files {
+			if f.Index != 0 {
+				usePos = false
+				break
+			}
+		}
+	}
+	for i, f := range files {
+		idx := f.Index
+		if usePos {
+			idx = i
+		}
+		if idx == want {
+			return f, true
+		}
+	}
+	return qbit.TorrentFile{}, false
+}
+
 // hashesInCategory snapshots the hashes the client already holds. A nil result
 // means the listing FAILED, which is not the same as the category being empty:
 // without the distinction a failed snapshot makes every existing torrent look
