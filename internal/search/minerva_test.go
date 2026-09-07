@@ -135,7 +135,7 @@ func TestSearchMinerva_ParsesResults(t *testing.T) {
 		t.Fatalf("got %d results, want 2 (Japan dump dropped)", len(results))
 	}
 	r := results[0]
-	if r.Indexer != "Minerva" || r.SourceType != "ddl" {
+	if r.Indexer != "Minerva" || r.SourceType != "torrent" {
 		t.Errorf("indexer/type = %q %q", r.Indexer, r.SourceType)
 	}
 	if r.Title != "Chrono Trigger (USA).zip" {
@@ -150,9 +150,11 @@ func TestSearchMinerva_ParsesResults(t *testing.T) {
 	if r.GUID != srv.URL+"/rom?id=2898398" {
 		t.Errorf("guid = %q", r.GUID)
 	}
-	wantURL := "https://myrient.example.test/files/No-Intro/Nintendo%20-%20Super%20Nintendo%20Entertainment%20System/Chrono%20Trigger%20%28USA%29.zip"
-	if r.DownloadURL != wantURL {
-		t.Errorf("download URL = %q, want %q", r.DownloadURL, wantURL)
+	if r.DownloadURL != "" {
+		t.Errorf("download URL = %q, want empty (magnet is the download)", r.DownloadURL)
+	}
+	if r.MagnetURL == "" || r.InfoHash == "" {
+		t.Errorf("magnet/hash missing: %q %q", r.MagnetURL, r.InfoHash)
 	}
 	if results[1].Title != "Chrono Trigger (Europe).zip" {
 		t.Errorf("second title = %q", results[1].Title)
