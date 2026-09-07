@@ -1271,3 +1271,52 @@ func TestDownloadsReportVimmRetryabilityWithoutExposingItsID(t *testing.T) {
 		t.Errorf("legacy row without replay inputs reported retryable: %v", rows["legacy-ddl"])
 	}
 }
+
+func TestDownloadsGroupsArchiveJobsByHash(t *testing.T) {
+	const hash = "ae3e64f1d5ff936fe5027a14216453101a0ddbfa"
+
+	qb := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/auth/login"):
+			w.Write([]byte("Ok."))
+		case strings.Contains(r.URL.Path, "/torrents/files"):
+			json.NewEncoder(w).Encode([]map[string]interface{}{
+				{"name": "Wii/Super Paper Mario (USA).zip", "size": 100, "progress": 0.5, "priority": 1, "index": 0},
+				{"name": "Wii/Other Game (USA).zip", "size": 200, "progress": 0.1, "priority": 0, "index": 1},
+				{"name": "Wii/Mario Galaxy (USA).zip", "size": 300, "progress": 0.25, "priority": 1, "index": 2},
+			})
+		default:
+			json.NewEncoder(w).Encode([]map[string]interface{}{{
+				"name": "Minerva_Myrient", "hash": hash, "progress": 0.3,
+				"state": "downloading", "total_size": 9_000_000_000, "dlspeed": 5_000_000, "eta": 1200,
+			}})
+		}
+	}))
+	defer qb.Close()
+
+	env := newTestEnv(t, func(c *config.Config) { c.QBURL = qb.URL })
+	env.jobs.Set("job-a", map[string]interface{}{
+		"status": "downloading", "title": "Super Paper Mario (USA).zip", "platform": "Wii", "info_hash": hash,
+	})
+	env.jobs.Set("job-b", map[string]interface{}{
+		"status": "downloading", "title": "Mario Galaxy (USA).zip", "platform": "Wii", "info_hash": hash,
+	})
+
+	rr := env.do("GET", "/api/downloads", "")
+	wantStatus(t, rr, 200)
+	downloads, _ := decodeMap(t, rr)["downloads"].([]interface{})
+	if len(downloads) != 1 {
+		t.Fatalf("downloads = %d entries, want 1 archive card", len(downloads))
+	}
+	entry, _ := downloads[0].(map[string]interface{})
+	if entry["type"] != "archive" {
+		t.Fatalf("type = %v, want archive", entry["type"])
+	}
+	if entry["title"] != "Minerva_Myrient" {
+		t.Errorf("title = %v", entry["title"])
+	}
+	files, _ := entry["files"].([]interface{})
+	if len(files) != 2 {
+		t.Fatalf("files = %d, want 2", len(files))
+	}
+}
