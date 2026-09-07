@@ -421,8 +421,17 @@ async function loadLibrary(page) {
   } catch(e) {}
 }
 
+let lastDownloadsJSON = '';
+const archiveDetailsOpen = {}; // hash -> bool; remember user collapse across polls
 async function pollDownloads() {
-  try { const d = await (await api('/api/downloads')).json(); renderDownloads(d.downloads || []); } catch(e) {}
+  try {
+    const d = await (await api('/api/downloads')).json();
+    const list = d.downloads || [];
+    const payload = JSON.stringify(list);
+    if (payload === lastDownloadsJSON) return;
+    lastDownloadsJSON = payload;
+    renderDownloads(list);
+  } catch(e) {}
 }
 async function updateBadge() {
   try {
@@ -465,6 +474,10 @@ function renderDownloadFileRow(f) {
 }
 function renderDownloads(downloads) {
   const c = document.getElementById('downloads');
+  // Remember which archive file lists the user collapsed before we wipe the DOM.
+  c.querySelectorAll('details[data-archive-hash]').forEach(el => {
+    archiveDetailsOpen[el.dataset.archiveHash] = el.open;
+  });
   if (!downloads.length) { c.innerHTML = '<div class="text-center py-16 text-slate-500"><div class="text-4xl mb-3">&#128229;</div>No active downloads</div>'; return; }
   c.innerHTML = downloads.map(d => {
     const files = Array.isArray(d.files) ? d.files : [];
@@ -484,7 +497,9 @@ function renderDownloads(downloads) {
     else if (d.job_id) actions += `<button data-action="removeJob" data-job-id="${jobId}" class="text-xs text-slate-500 hover:text-red-400 px-2 py-1 rounded hover:bg-red-500/10">Dismiss</button>`;
     const title = isArchive ? (d.title || 'Archive download') : d.title;
     const fileSummary = isArchive ? `<span class="text-slate-500">${files.length} title${files.length === 1 ? '' : 's'}</span>` : '';
-    const fileList = isArchive ? `<details class="mt-3" open>
+    const detailsKey = d.hash || d.info_hash || d.title || '';
+    const detailsOpen = archiveDetailsOpen[detailsKey] !== false; // default open
+    const fileList = isArchive ? `<details class="mt-3" data-archive-hash="${esc(detailsKey)}"${detailsOpen ? ' open' : ''}>
       <summary class="text-xs text-slate-400 cursor-pointer select-none hover:text-slate-300">${files.length} files in this torrent</summary>
       <div class="mt-2 pl-1">${files.map(renderDownloadFileRow).join('')}</div>
     </details>` : '';
