@@ -845,6 +845,7 @@ func buildArchiveEntry(s *Server, tor qbit.Torrent, hashJobs []struct {
 	ID   string
 	Data map[string]interface{}
 }, statusMap map[string]string, progress float64, speed string) models.DownloadEntry {
+	infoHash, _ := hashJobs[0].Data["info_hash"].(string)
 	var filesList []qbit.TorrentFile
 	if s.cfg.HasQBittorrent() {
 		filesList = s.mgr.QB().GetTorrentFiles(tor.Hash)
@@ -853,6 +854,9 @@ func buildArchiveEntry(s *Server, tor qbit.Torrent, hashJobs []struct {
 	var wantedBytes int64
 	for _, j := range hashJobs {
 		df := jobToDownloadFile(j)
+		if isArchiveShellTitle(df.Title, tor.Name) {
+			continue
+		}
 		if f, ok := download.TorrentFileForTitle(filesList, df.Title); ok {
 			df.Progress = float64(int(f.Progress*1000)) / 10.0
 			df.Size = search.HumanSize(f.Size)
@@ -860,12 +864,47 @@ func buildArchiveEntry(s *Server, tor qbit.Torrent, hashJobs []struct {
 		}
 		files = append(files, df)
 	}
+	if len(files) == 0 {
+		status := tor.State
+		if mapped, ok := statusMap[tor.State]; ok {
+			status = mapped
+		}
+		return models.DownloadEntry{
+			Type:     "torrent",
+			Title:    tor.Name,
+			Progress: progress,
+			Status:   status,
+			Size:     search.HumanSize(tor.TotalSize),
+			Speed:    speed,
+			ETA:      tor.ETA,
+			Hash:     tor.Hash,
+			InfoHash: infoHash,
+		}
+	}
+	if len(files) == 1 {
+		j := files[0]
+		return models.DownloadEntry{
+			Type:     "job",
+			Title:    j.Title,
+			Platform: j.Platform,
+			Status:   j.Status,
+			JobID:    j.JobID,
+			Error:    j.Error,
+			Detail:   j.Detail,
+			Progress: progress,
+			Size:     firstNonEmpty(j.Size, search.HumanSize(tor.TotalSize)),
+			Speed:    speed,
+			ETA:      tor.ETA,
+			Hash:     tor.Hash,
+			InfoHash: infoHash,
+			CanRetry: j.CanRetry,
+		}
+	}
 	status := archiveStatus(files, tor.State, statusMap)
 	size := search.HumanSize(tor.TotalSize)
 	if wantedBytes > 0 {
 		size = search.HumanSize(wantedBytes)
 	}
-	infoHash, _ := hashJobs[0].Data["info_hash"].(string)
 	return models.DownloadEntry{
 		Type:     "archive",
 		Title:    tor.Name,
@@ -887,9 +926,35 @@ func buildArchiveEntryFromJobs(hashJobs []struct {
 }) models.DownloadEntry {
 	files := make([]models.DownloadFile, 0, len(hashJobs))
 	for _, j := range hashJobs {
-		files = append(files, jobToDownloadFile(j))
+		df := jobToDownloadFile(j)
+		if isArchiveShellTitle(df.Title, "") {
+			continue
+		}
+		files = append(files, df)
 	}
 	infoHash, _ := hashJobs[0].Data["info_hash"].(string)
+	if len(files) <= 1 {
+		if len(files) == 1 {
+			j := files[0]
+			return models.DownloadEntry{
+				Type:     "job",
+				Title:    j.Title,
+				Platform: j.Platform,
+				Status:   j.Status,
+				JobID:    j.JobID,
+				Error:    j.Error,
+				Detail:   j.Detail,
+				InfoHash: infoHash,
+				CanRetry: j.CanRetry,
+			}
+		}
+		return models.DownloadEntry{
+			Type:     "job",
+			Title:    "Archive download",
+			Status:   "downloading",
+			InfoHash: infoHash,
+		}
+	}
 	return models.DownloadEntry{
 		Type:     "archive",
 		Title:    "Archive download",
@@ -898,6 +963,31 @@ func buildArchiveEntryFromJobs(hashJobs []struct {
 		InfoHash: infoHash,
 		Files:    files,
 	}
+}
+
+func isArchiveShellTitle(jobTitle, torrentName string) bool {
+	title := strings.TrimSpace(jobTitle)
+	if title == "" {
+		return true
+	}
+	if torrentName != "" && strings.EqualFold(title, torrentName) {
+		return true
+	}
+	// Known Minerva archive display names.
+	switch strings.ToLower(title) {
+	case "minerva_myrient", "minerva myrient", "archive download":
+		return true
+	}
+	return false
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func jobToDownloadFile(j struct {

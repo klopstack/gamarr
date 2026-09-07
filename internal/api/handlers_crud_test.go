@@ -1301,6 +1301,10 @@ func TestDownloadsGroupsArchiveJobsByHash(t *testing.T) {
 	env.jobs.Set("job-b", map[string]interface{}{
 		"status": "downloading", "title": "Mario Galaxy (USA).zip", "platform": "Wii", "info_hash": hash,
 	})
+	// Orphan-recovery shell — must not appear as a file row.
+	env.jobs.Set("job-shell", map[string]interface{}{
+		"status": "downloading", "title": "Minerva_Myrient", "platform": "Unknown", "info_hash": hash,
+	})
 
 	rr := env.do("GET", "/api/downloads", "")
 	wantStatus(t, rr, 200)
@@ -1317,6 +1321,12 @@ func TestDownloadsGroupsArchiveJobsByHash(t *testing.T) {
 	}
 	files, _ := entry["files"].([]interface{})
 	if len(files) != 2 {
-		t.Fatalf("files = %d, want 2", len(files))
+		t.Fatalf("files = %d, want 2 (shell job excluded)", len(files))
+	}
+	for _, raw := range files {
+		f, _ := raw.(map[string]interface{})
+		if f["title"] == "Minerva_Myrient" {
+			t.Fatal("shell job leaked into archive file list")
+		}
 	}
 }
