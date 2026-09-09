@@ -223,6 +223,33 @@ func TestTorrentFileContentPathStripsGenericRootWhenRenamed(t *testing.T) {
 	}
 }
 
+func TestTorrentFileContentPathSingleFileDoesNotNest(t *testing.T) {
+	file := "/data/torrents/console/Halo (USA).zip"
+	got := torrentFileContentPath(file, "Halo (USA).zip")
+	if got != file {
+		t.Fatalf("got %q, want the file itself (not nested)", got)
+	}
+	got = torrentFileContentPath(file, "SomeTorrent/Halo (USA).zip")
+	if got != file {
+		t.Fatalf("got %q, want the file itself when qB prefixes the torrent name", got)
+	}
+}
+
+func TestArchiveMemberUnderSlugPicksExistingPrefix(t *testing.T) {
+	reg, err := sources.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	base := "Summer Games (USA).zip"
+	tape := filepath.Join(root, "No-Intro", "Commodore - Commodore 64 (Tapes)", base)
+	writeFileT(t, tape, []byte("tap"))
+	got := archiveMemberUnderSlug(root, base, "c64", reg)
+	if got != tape {
+		t.Fatalf("got %q, want tape path %q", got, tape)
+	}
+}
+
 func TestRommSlugForImportRejectsArchiveFolder(t *testing.T) {
 	reg, err := sources.Default()
 	if err != nil {

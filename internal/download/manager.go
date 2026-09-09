@@ -768,6 +768,13 @@ func (m *Manager) resolveImportContentPath(jobID string, torrent *qbit.Torrent) 
 // content_path already ends with after a rename (Minerva_Myrient → Game Boy).
 func torrentFileContentPath(contentPath, fileName string) string {
 	rel := stripArchiveRootPrefix(filepath.FromSlash(fileName))
+	// Single-file torrents: qB content_path is already the file. Joining the
+	// basename again yields /data/game.zip/game.zip and organize misses.
+	if filepath.Base(contentPath) == filepath.Base(rel) {
+		if fi, err := os.Stat(contentPath); err != nil || !fi.IsDir() {
+			return contentPath
+		}
+	}
 	if base := filepath.Base(contentPath); base != "" {
 		prefix := base + string(os.PathSeparator)
 		if strings.HasPrefix(rel, prefix) {
@@ -812,13 +819,22 @@ func archiveMemberUnderSlug(root, title, platSlug string, reg *sources.Registry)
 	if root == "" || base == "" || base == "." || platSlug == "" || reg == nil {
 		return ""
 	}
+	var cands []string
 	if _, paths, ok := reg.Minerva.ResolveSlug(platSlug); ok {
 		for _, p := range paths {
-			return filepath.Join(root, filepath.FromSlash(strings.Trim(p, "/")), base)
+			cands = append(cands, filepath.Join(root, filepath.FromSlash(strings.Trim(p, "/")), base))
 		}
 	}
 	if p, ok := reg.Myrient.PlatformPaths[platSlug]; ok && p != "" {
-		return filepath.Join(root, filepath.FromSlash(strings.Trim(p, "/")), base)
+		cands = append(cands, filepath.Join(root, filepath.FromSlash(strings.Trim(p, "/")), base))
+	}
+	for _, c := range cands {
+		if _, err := os.Stat(c); err == nil {
+			return c
+		}
+	}
+	if len(cands) > 0 {
+		return cands[0]
 	}
 	return ""
 }
