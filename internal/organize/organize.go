@@ -155,6 +155,33 @@ func DetectPlatform(filename string) (platform, platformSlug string, isPC bool) 
 		return "PS3", "ps3", false
 	case ".gdi", ".cdi":
 		return "Dreamcast", "dc", false
+	case ".sms":
+		return "Master System", "sms", false
+	case ".pce":
+		return "PC Engine", "tg16", false
+	case ".sg", ".32x":
+		return "Sega 32X", "sega32", false
+	case ".lnx":
+		return "Atari Lynx", "lynx", false
+	case ".j64", ".jag":
+		return "Atari Jaguar", "jaguar", false
+	case ".vb":
+		return "Virtual Boy", "virtualboy", false
+	case ".fds":
+		return "Famicom Disk System", "fds", false
+	case ".d64", ".t64", ".tap", ".prg", ".crt":
+		return "Commodore 64", "c64", false
+	case ".adf", ".ipf":
+		return "Amiga", "amiga", false
+	case ".rom":
+		lower := strings.ToLower(filename)
+		if strings.Contains(lower, "msx2") {
+			return "MSX2", "msx2", false
+		}
+		if strings.Contains(lower, "msx") {
+			return "MSX", "msx", false
+		}
+		return "", "", false
 	case ".iso":
 		// ISO is ambiguous — could be PS2, PSP, PS1, Xbox, etc.
 		// Try to guess from filename.

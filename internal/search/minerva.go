@@ -91,48 +91,54 @@ func SearchMinerva(reg *sources.Registry, query string, platformSlug string) []*
 	if platformSlug == "" {
 		return nil
 	}
-	if _, ok := reg.Minerva.PlatformPaths[platformSlug]; !ok {
-		return nil
-	}
-
-	files := getMinervaListing(reg, platformSlug)
-	if files == nil {
+	_, paths, ok := reg.Minerva.ResolveSlug(platformSlug)
+	if !ok {
 		return nil
 	}
 
 	platName, isPC := minervaPlatformInfo(platformSlug, "")
-	var results []*models.SearchResult
-	for _, f := range files {
-		fWords := extractWords(f.Title)
-		overlap := countOverlap(qWords, fWords)
-		minReq := len(qWords) - 1
-		if minReq < 1 {
-			minReq = 1
-		}
-		if overlap < minReq || overlap < 1 {
-			continue
-		}
-		if nonEnglishRegionRe.MatchString(f.Title) && !englishRegionRe.MatchString(f.Title) {
-			continue
-		}
 
-		results = append(results, &models.SearchResult{
-			Title:          f.Title,
-			Size:           f.Size,
-			SizeHuman:      f.SizeHuman,
-			Indexer:        "Minerva",
-			MagnetURL:      f.Magnet,
-			InfoHash:       minervaInfoHash(f.Magnet),
-			GUID:           minervaGUID(reg.Minerva.BaseURL, f.ID),
-			Platform:       platName,
-			PlatformSlug:   platformSlug,
-			IsPC:           isPC,
-			SourceType:     "torrent",
-			SafetyScore:    95,
-			SafetyWarnings: []string{},
-		})
-		if len(results) >= 20 {
-			break
+	var results []*models.SearchResult
+	for _, platformPath := range paths {
+		files := getMinervaListing(reg, platformSlug, platformPath)
+		if len(files) == 0 {
+			continue
+		}
+		for _, f := range files {
+			fWords := extractWords(f.Title)
+			overlap := countOverlap(qWords, fWords)
+			minReq := len(qWords) - 1
+			if minReq < 1 {
+				minReq = 1
+			}
+			if overlap < minReq || overlap < 1 {
+				continue
+			}
+			if nonEnglishRegionRe.MatchString(f.Title) && !englishRegionRe.MatchString(f.Title) {
+				continue
+			}
+
+			results = append(results, &models.SearchResult{
+				Title:          f.Title,
+				Size:           f.Size,
+				SizeHuman:      f.SizeHuman,
+				Indexer:        "Minerva",
+				MagnetURL:      f.Magnet,
+				InfoHash:       minervaInfoHash(f.Magnet),
+				GUID:           minervaGUID(reg.Minerva.BaseURL, f.ID),
+				Platform:       platName,
+				PlatformSlug:   platformSlug,
+				IsPC:           isPC,
+				SourceType:     "torrent",
+				SafetyScore:    95,
+				SafetyWarnings: []string{},
+			})
+			if len(results) >= 20 {
+				break
+			}
+		}
+		if len(results) > 0 {
+			break // tier matched — skip lower-priority fallbacks (e.g. tape)
 		}
 	}
 
@@ -142,16 +148,16 @@ func SearchMinerva(reg *sources.Registry, query string, platformSlug string) []*
 	return results
 }
 
-func getMinervaListing(reg *sources.Registry, slug string) []minervaHit {
+func getMinervaListing(reg *sources.Registry, slug, platformPath string) []minervaHit {
+	cacheKey := slug + "\x00" + platformPath
 	minervaCacheMu.RLock()
-	if entries, ok := minervaCache[slug]; ok && time.Since(minervaCacheTime[slug]) < minervaCacheTTL {
+	if entries, ok := minervaCache[cacheKey]; ok && time.Since(minervaCacheTime[cacheKey]) < minervaCacheTTL {
 		minervaCacheMu.RUnlock()
 		return entries
 	}
 	minervaCacheMu.RUnlock()
 
-	platformPath, ok := reg.Minerva.PlatformPaths[slug]
-	if !ok {
+	if platformPath == "" {
 		return nil
 	}
 	listURL := minervaListingURL(reg.Minerva.BaseURL, platformPath)
@@ -189,10 +195,10 @@ func getMinervaListing(reg *sources.Registry, slug string) []minervaHit {
 
 	entries := parseMinervaListing(string(body), platformPath)
 	minervaCacheMu.Lock()
-	minervaCache[slug] = entries
-	minervaCacheTime[slug] = time.Now()
+	minervaCache[cacheKey] = entries
+	minervaCacheTime[cacheKey] = time.Now()
 	minervaCacheMu.Unlock()
-	slog.Info("Minerva cached files", "slug", slug, "count", len(entries))
+	slog.Info("Minerva cached files", "slug", slug, "path", platformPath, "count", len(entries))
 	return entries
 }
 

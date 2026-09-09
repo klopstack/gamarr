@@ -26,6 +26,10 @@
   },
   "minerva": {
     "base_url": "https://minerva-archive.org/",
+    "platform_aliases": {
+      "gamecube":  "ngc",
+      "dreamcast": "dc"
+    },
     "platform_paths": {
       "gba":       "No-Intro/Nintendo - Game Boy Advance/",
       "gb":        "No-Intro/Nintendo - Game Boy/",
@@ -48,7 +52,46 @@
       "wiiu":      "Redump/Nintendo - Wii U - WUX/",
       "xbox":      "Redump/Microsoft - Xbox/",
       "xbox360":   "Redump/Microsoft - Xbox 360/",
-      "atari2600": "No-Intro/Atari - Atari 2600/"
+      "atari2600": "No-Intro/Atari - Atari 2600/",
+      "atari5200": "No-Intro/Atari - Atari 5200/",
+      "atari7800": "No-Intro/Atari - Atari 7800/",
+      "jaguar":    "No-Intro/Atari - Atari Jaguar (ROM)/",
+      "lynx":      "No-Intro/Atari - Atari Lynx (LNX)/",
+      "sms":       "No-Intro/Sega - Master System - Mark III/",
+      "gamegear":  "No-Intro/Sega - Game Gear/",
+      "sega32":    "No-Intro/Sega - 32X/",
+      "segacd":    "Redump/Sega - Mega CD & Sega CD/",
+      "sg1000":    "No-Intro/Sega - SG-1000/",
+      "virtualboy":"No-Intro/Nintendo - Virtual Boy/",
+      "fds":       "No-Intro/Nintendo - Family Computer Disk System (FDS)/",
+      "tg16":      "No-Intro/NEC - PC Engine - TurboGrafx-16/",
+      "turbografx-cd": "Redump/NEC - PC Engine CD & TurboGrafx CD/",
+      "pc-fx":     "Redump/NEC - PC-FX & PC-FXGA/",
+      "wonderswan": "No-Intro/Bandai - WonderSwan/",
+      "wonderswan-color": "No-Intro/Bandai - WonderSwan Color/",
+      "neo-geo-pocket": "No-Intro/SNK - NeoGeo Pocket/",
+      "neo-geo-pocket-color": "No-Intro/SNK - NeoGeo Pocket Color/",
+      "intellivision": "No-Intro/Mattel - Intellivision/",
+      "colecovision": "No-Intro/Coleco - ColecoVision/",
+      "vectrex":   "No-Intro/GCE - Vectrex/",
+      "odyssey-2": "No-Intro/Magnavox - Odyssey 2/",
+      "3do":       "Redump/Panasonic - 3DO Interactive Multiplayer/",
+      "philips-cd-i": "Redump/Philips - CD-i/",
+      "channelf":  "No-Intro/Fairchild - Channel F/",
+      "astrocade": "No-Intro/Bally - Astrocade/",
+      "arcadia":   "No-Intro/Emerson - Arcadia 2001/",
+      "gp32":      "No-Intro/GamePark - GP32/",
+      "c64": [
+        "No-Intro/Commodore - Commodore 64/",
+        "No-Intro/Commodore - Commodore 64 (Tapes)/"
+      ],
+      "amiga":     "No-Intro/Commodore - Amiga/",
+      "msx":       "No-Intro/Microsoft - MSX/",
+      "msx2":      "No-Intro/Microsoft - MSX2/",
+      "sharp-x68000": [
+        "Redump/Sharp - X68000/",
+        "No-Intro/Sharp - X68000 (Flux)/"
+      ]
     }
   },
   "vimm": {

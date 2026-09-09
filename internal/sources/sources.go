@@ -50,8 +50,12 @@ type VimmSpec struct {
 
 // MinervaSpec carries the configurable bits of the Minerva Archive browse driver.
 type MinervaSpec struct {
-	BaseURL       string            `json:"base_url"`
-	PlatformPaths map[string]string `json:"platform_paths"`
+	BaseURL string `json:"base_url"`
+	// PlatformPaths maps a slug to one or more browse paths (disk first, tape fallback).
+	PlatformPaths map[string]PlatformPathList `json:"platform_paths"`
+	// PlatformAliases maps wishlist slugs onto canonical PlatformPaths keys
+	// (e.g. gamecube → ngc). Same idea as vimm.platform_aliases.
+	PlatformAliases map[string]string `json:"platform_aliases,omitempty"`
 }
 
 // Default returns the embedded fallback registry.

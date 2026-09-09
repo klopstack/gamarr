@@ -133,7 +133,7 @@ func TestRegistryFlow(t *testing.T) {
 		srv := newRecordingServer(t, 200, `<div class="entry" data-name="game (usa).zip"><a href="/rom?id=42">Game (USA).zip</a></div>`)
 		reg, _ := sources.Default()
 		reg.Minerva.BaseURL = srv.URL + "/"
-		reg.Minerva.PlatformPaths = map[string]string{"nes": "No-Intro/Nintendo - Nintendo Entertainment System (Headered)/"}
+		reg.Minerva.PlatformPaths = map[string]sources.PlatformPathList{"nes": {"No-Intro/Nintendo - Nintendo Entertainment System (Headered)/"}}
 
 		_ = SearchMinerva(reg, "game", "nes")
 		if !srv.hit() {
@@ -152,7 +152,7 @@ func TestRegistryFlow(t *testing.T) {
 		srv := newRecordingServer(t, 200, body)
 		reg, _ := sources.Default()
 		reg.Minerva.BaseURL = srv.URL + "/"
-		reg.Minerva.PlatformPaths = map[string]string{"nes": "No-Intro/Nintendo - Nintendo Entertainment System (Headered)/"}
+		reg.Minerva.PlatformPaths = map[string]sources.PlatformPathList{"nes": {"No-Intro/Nintendo - Nintendo Entertainment System (Headered)/"}}
 
 		results := SearchMinerva(reg, "game", "nes")
 		if len(results) == 0 {

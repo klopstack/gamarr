@@ -33,10 +33,10 @@ func minervaTestRegistry(t *testing.T, base string) *sources.Registry {
 	t.Helper()
 	reg := testRegistry(t)
 	reg.Minerva.BaseURL = base
-	reg.Minerva.PlatformPaths = map[string]string{
-		"snes": "No-Intro/Nintendo - Super Nintendo Entertainment System/",
-		"gba":  "No-Intro/Nintendo - Game Boy Advance/",
-		"nes":  "No-Intro/Nintendo - Nintendo Entertainment System (Headered)/",
+	reg.Minerva.PlatformPaths = map[string]sources.PlatformPathList{
+		"snes": {"No-Intro/Nintendo - Super Nintendo Entertainment System/"},
+		"gba":  {"No-Intro/Nintendo - Game Boy Advance/"},
+		"nes":  {"No-Intro/Nintendo - Nintendo Entertainment System (Headered)/"},
 	}
 	reg.Myrient.BaseURL = "https://myrient.example.test/files/"
 	return reg
@@ -269,4 +269,116 @@ func TestMinervaGUID(t *testing.T) {
 
 func TestClearMinervaCache(t *testing.T) {
 	ClearMinervaCache()
+}
+
+const minervaDiskHTML = `<div class="listing">
+<div class="entry" data-name="other game (usa).zip">
+<a href="/rom?id=100">Other Game (USA).zip</a>
+<span>1 MB</span>
+<a href="javascript:void(0)" onclick="downloadMagnet('magnet:?xt=urn:btih:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')"></a>
+</div>
+</div>`
+
+const minervaTapeHTML = `<div class="listing">
+<div class="entry" data-name="007 - a view to a kill (europe).zip">
+<a href="/rom?id=200">007 - A View to a Kill (Europe).zip</a>
+<span>107 KB</span>
+<a href="javascript:void(0)" onclick="downloadMagnet('magnet:?xt=urn:btih:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb')"></a>
+</div>
+</div>`
+
+func TestSearchMinerva_TierFallback(t *testing.T) {
+	ClearMinervaCache()
+	t.Cleanup(func() {
+		ClearMinervaCache()
+		RecordSearchSuccess("minerva")
+	})
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		if strings.Contains(r.URL.Path, "Tapes") {
+			_, _ = w.Write([]byte(minervaTapeHTML))
+			return
+		}
+		_, _ = w.Write([]byte(minervaDiskHTML))
+	}))
+	t.Cleanup(srv.Close)
+
+	reg := minervaTestRegistry(t, srv.URL+"/")
+	reg.Minerva.PlatformPaths = map[string]sources.PlatformPathList{
+		"c64": {
+			"No-Intro/Commodore - Commodore 64/",
+			"No-Intro/Commodore - Commodore 64 (Tapes)/",
+		},
+	}
+
+	results := SearchMinerva(reg, "007 View Kill", "c64")
+	if len(results) != 1 {
+		t.Fatalf("got %d results, want 1 tape fallback hit", len(results))
+	}
+	if results[0].Title != "007 - A View to a Kill (Europe).zip" {
+		t.Errorf("title = %q", results[0].Title)
+	}
+	if hits != 2 {
+		t.Errorf("fetched %d listings, want disk then tape tiers", hits)
+	}
+}
+
+func TestSearchMinerva_TierStopsAfterDiskMatch(t *testing.T) {
+	ClearMinervaCache()
+	t.Cleanup(func() {
+		ClearMinervaCache()
+		RecordSearchSuccess("minerva")
+	})
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		if strings.Contains(r.URL.Path, "Tapes") {
+			t.Error("tape tier should not be fetched when disk tier matches")
+		}
+		_, _ = w.Write([]byte(minervaDiskHTML))
+	}))
+	t.Cleanup(srv.Close)
+
+	reg := minervaTestRegistry(t, srv.URL+"/")
+	reg.Minerva.PlatformPaths = map[string]sources.PlatformPathList{
+		"c64": {
+			"No-Intro/Commodore - Commodore 64/",
+			"No-Intro/Commodore - Commodore 64 (Tapes)/",
+		},
+	}
+
+	results := SearchMinerva(reg, "Other Game", "c64")
+	if len(results) != 1 {
+		t.Fatalf("got %d results, want 1 disk hit", len(results))
+	}
+	if hits != 1 {
+		t.Errorf("fetched %d listings, want disk tier only", hits)
+	}
+}
+
+func TestSearchMinerva_PlatformAlias(t *testing.T) {
+	ClearMinervaCache()
+	t.Cleanup(func() {
+		ClearMinervaCache()
+		RecordSearchSuccess("minerva")
+	})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(minervaBrowseHTML))
+	}))
+	t.Cleanup(srv.Close)
+
+	reg := minervaTestRegistry(t, srv.URL+"/")
+	reg.Minerva.PlatformPaths = map[string]sources.PlatformPathList{
+		"ngc": {"No-Intro/Nintendo - GameCube/"},
+	}
+	reg.Minerva.PlatformAliases = map[string]string{"gamecube": "ngc"}
+
+	results := SearchMinerva(reg, "Chrono Trigger", "gamecube")
+	if len(results) != 2 {
+		t.Fatalf("got %d results via alias, want 2", len(results))
+	}
+	if results[0].PlatformSlug != "gamecube" {
+		t.Errorf("PlatformSlug = %q, want wishlist slug preserved", results[0].PlatformSlug)
+	}
 }
