@@ -45,6 +45,9 @@ func TestDefault_EmbeddedRegistryIsComplete(t *testing.T) {
 	if r.Minerva.PlatformPaths["mame"].Primary() != "MAME/ROMs (merged)/" {
 		t.Errorf("Minerva.PlatformPaths[mame] = %q", r.Minerva.PlatformPaths["mame"].Primary())
 	}
+	if r.Minerva.PlatformPaths["wiiware"].Primary() != "No-Intro/Nintendo - Wii (Digital) (CDN)/" {
+		t.Errorf("Minerva.PlatformPaths[wiiware] = %q", r.Minerva.PlatformPaths["wiiware"].Primary())
+	}
 }
 
 func TestLoad(t *testing.T) {

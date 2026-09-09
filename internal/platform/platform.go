@@ -54,6 +54,7 @@ var ExtraPlatforms = []ExtraPlatform{
 	{"genesis", "Sega Genesis"},
 	{"saturn", "Sega Saturn"},
 	{"wiiu", "Wii U"},
+	{"wiiware", "WiiWare"},
 	{"psvita", "PS Vita"},
 	{"atari2600", "Atari 2600"},
 	{"atari5200", "Atari 5200"},

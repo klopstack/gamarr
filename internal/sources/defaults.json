@@ -51,6 +51,7 @@
       "genesis":   "No-Intro/Sega - Mega Drive - Genesis/",
       "ngc":       "Redump/Nintendo - GameCube - NKit RVZ [zstd-19-128k]/",
       "wii":       "Redump/Nintendo - Wii - NKit RVZ [zstd-19-128k]/",
+      "wiiware":   "No-Intro/Nintendo - Wii (Digital) (CDN)/",
       "wiiu":      "Redump/Nintendo - Wii U - WUX/",
       "xbox":      "Redump/Microsoft - Xbox/",
       "xbox360":   "Redump/Microsoft - Xbox 360/",
