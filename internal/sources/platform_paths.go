@@ -3,6 +3,7 @@ package sources
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // PlatformPathList is one or more archive browse paths searched in order.
@@ -39,10 +40,20 @@ func (p PlatformPathList) Primary() string {
 	return p[0]
 }
 
+func compactSlug(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	s = strings.ReplaceAll(s, "-", "")
+	return strings.ReplaceAll(s, "_", "")
+}
+
 // ResolveSlug maps a wishlist/API slug to the canonical slug and ordered paths.
-// Aliases are checked only when slug is not a direct platform_paths key.
+// Card/prompt values are often upcased (C64) or unhyphenated (vic20).
 func (m *MinervaSpec) ResolveSlug(slug string) (canonical string, paths PlatformPathList, ok bool) {
 	if m == nil {
+		return "", nil, false
+	}
+	slug = strings.TrimSpace(slug)
+	if slug == "" {
 		return "", nil, false
 	}
 	if paths, ok = m.PlatformPaths[slug]; ok && paths.Primary() != "" {
@@ -52,6 +63,31 @@ func (m *MinervaSpec) ResolveSlug(slug string) (canonical string, paths Platform
 		if paths, ok = m.PlatformPaths[canon]; ok && paths.Primary() != "" {
 			return canon, paths, true
 		}
+	}
+	for key, p := range m.PlatformPaths {
+		if strings.EqualFold(key, slug) && p.Primary() != "" {
+			return key, p, true
+		}
+	}
+	for alias, canon := range m.PlatformAliases {
+		if strings.EqualFold(alias, slug) {
+			if p, found := m.PlatformPaths[canon]; found && p.Primary() != "" {
+				return canon, p, true
+			}
+		}
+	}
+	want := compactSlug(slug)
+	var hit string
+	var hitPaths PlatformPathList
+	n := 0
+	for key, p := range m.PlatformPaths {
+		if compactSlug(key) == want && p.Primary() != "" {
+			n++
+			hit, hitPaths = key, p
+		}
+	}
+	if n == 1 {
+		return hit, hitPaths, true
 	}
 	return "", nil, false
 }

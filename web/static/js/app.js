@@ -532,11 +532,12 @@ async function removeTorrent(h) { await api(`/api/downloads/torrent/${h}`, {meth
 async function removeJob(id) { await api(`/api/downloads/${id}`, {method:'DELETE'}); pollDownloads(); }
 async function clearFinished() { await api('/api/downloads/clear', {method:'POST'}); pollDownloads(); toast('Cleared', 'success'); }
 async function organizeTorrent(hash, jobId) {
-  const plat = prompt('Platform? (pc, switch, ps2, ps3, psp, nds, 3ds, wii, ngc, dc, psx, gba, n64, snes, nes, gb, genesis, saturn, xbox, xbox360)', 'pc');
+  const plat = prompt('Platform? (pc, switch, ps2, ps3, psp, nds, 3ds, wii, ngc, dc, psx, gba, n64, snes, nes, gb, genesis, saturn, xbox, xbox360, c64, vic-20)', 'pc');
   if (!plat) return;
-  const isPC = plat === 'pc';
+  const slug = plat.trim().toLowerCase();
+  const isPC = slug === 'pc';
   try {
-    const d = await (await api(`/api/downloads/organize/${hash}`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({platform: isPC ? 'PC' : plat.toUpperCase(), platform_slug: isPC ? '' : plat, is_pc: isPC})})).json();
+    const d = await (await api(`/api/downloads/organize/${hash}`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({platform: isPC ? 'PC' : slug, platform_slug: isPC ? '' : slug, is_pc: isPC})})).json();
     if (d.success) { if (jobId) removeJob(jobId); toast('Organizing...', 'success'); } else toast(d.error || 'Failed', 'error');
   } catch(e) { toast('Failed', 'error'); }
   pollDownloads();

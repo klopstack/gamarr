@@ -910,6 +910,9 @@ func (m *Manager) organizeArchiveMembers(jobID string, torrent *qbit.Torrent, ro
 	if platSlug != "" && !isGenericArchiveTorrentName(platSlug) &&
 		!strings.EqualFold(platSlug, "unknown") && !strings.EqualFold(platSlug, "pc") {
 		wantSlug = platSlug
+		if canon, _, ok := reg.Minerva.ResolveSlug(platSlug); ok {
+			wantSlug = canon
+		}
 	}
 	imported := 0
 	var lastErr error
@@ -926,7 +929,7 @@ func (m *Manager) organizeArchiveMembers(jobID string, torrent *qbit.Torrent, ro
 		if !ok {
 			continue
 		}
-		if wantSlug != "" && slug != wantSlug {
+		if wantSlug != "" && !strings.EqualFold(slug, wantSlug) {
 			continue
 		}
 		name := sanitizeFilename(filepath.Base(src))

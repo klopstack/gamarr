@@ -382,10 +382,10 @@ func TestOrganizeGameFlattensC64PPCollection(t *testing.T) {
 	jobID := "job-c64"
 	jobs.Set(jobID, map[string]interface{}{
 		"status": "organizing", "title": "Minerva Archive",
-		"platform": "C64", "platform_slug": "c64",
+		"platform": "C64", "platform_slug": "C64",
 	})
 	tor := qbit.Torrent{Name: "C64", Hash: "c64", ContentPath: root}
-	if m.organizeGame(jobID, &tor, "C64", "c64", false, 1) {
+	if m.organizeGame(jobID, &tor, "C64", "C64", false, 1) {
 		t.Fatal("c64 flatten should not retry")
 	}
 	if !pathExists(filepath.Join(cfg.GamesRomsPath, "c64", "Turrican (USA).zip")) {
@@ -393,6 +393,37 @@ func TestOrganizeGameFlattensC64PPCollection(t *testing.T) {
 	}
 	if pathExists(filepath.Join(cfg.GamesRomsPath, "vic-20", "Omega Race (USA).zip")) {
 		t.Fatal("filtered slug imported a VIC-20 file")
+	}
+}
+
+func TestOrganizeGameFlattensVIC20WithCardSlug(t *testing.T) {
+	cfg := newTestConfig(t)
+	reg, err := sources.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Sources = reg
+	jobs := newTestJobs(t)
+	m := New(cfg, jobs, newQbitMock(t).client())
+
+	root := filepath.Join(t.TempDir(), "Minerva_Myrient")
+	writeFileT(t, filepath.Join(root, "No-Intro", "Commodore - VIC-20", "Omega Race (USA).zip"), []byte("vic"))
+	writeFileT(t, filepath.Join(root, "No-Intro", "Commodore - Commodore 64 (PP)", "Turrican (USA).zip"), []byte("c64"))
+
+	jobID := "job-vic"
+	jobs.Set(jobID, map[string]interface{}{
+		"status": "organizing", "title": "Unknown",
+		"platform": "VIC20", "platform_slug": "vic20",
+	})
+	tor := qbit.Torrent{Name: "Unknown", Hash: "vic", ContentPath: root}
+	if m.organizeGame(jobID, &tor, "VIC20", "vic20", false, 1) {
+		t.Fatal("vic-20 flatten should not retry")
+	}
+	if !pathExists(filepath.Join(cfg.GamesRomsPath, "vic-20", "Omega Race (USA).zip")) {
+		t.Fatal("VIC-20 ROM not imported")
+	}
+	if pathExists(filepath.Join(cfg.GamesRomsPath, "c64", "Turrican (USA).zip")) {
+		t.Fatal("filtered slug imported a C64 file")
 	}
 }
 

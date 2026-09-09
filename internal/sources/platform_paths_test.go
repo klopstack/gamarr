@@ -37,6 +37,7 @@ func TestMinervaSpec_ResolveSlug(t *testing.T) {
 				"No-Intro/Commodore - Commodore 64/",
 				"No-Intro/Commodore - Commodore 64 (Tapes)/",
 			},
+			"vic-20": {"No-Intro/Commodore - VIC-20/"},
 		},
 		PlatformAliases: map[string]string{
 			"gamecube": "ngc",
@@ -52,6 +53,12 @@ func TestMinervaSpec_ResolveSlug(t *testing.T) {
 	}
 	if canon, paths, ok := m.ResolveSlug("arcade"); !ok || canon != "mame" || paths.Primary() != "MAME/ROMs (merged)/" {
 		t.Errorf("alias arcade = %q %v %v", canon, paths, ok)
+	}
+	if canon, _, ok := m.ResolveSlug("C64"); !ok || canon != "c64" {
+		t.Errorf("upcased C64 = %q %v", canon, ok)
+	}
+	if canon, _, ok := m.ResolveSlug("vic20"); !ok || canon != "vic-20" {
+		t.Errorf("unhyphenated vic20 = %q %v", canon, ok)
 	}
 	if _, _, ok := m.ResolveSlug("pc"); ok {
 		t.Error("unknown slug should not resolve")

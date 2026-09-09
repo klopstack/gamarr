@@ -257,6 +257,7 @@ func platformNameFromSlug(slug string) string {
 		"ngc": "GameCube", "wii": "Wii", "wiiu": "Wii U",
 		"xbox": "Xbox", "xbox360": "Xbox 360",
 		"psvita": "PS Vita",
+		"c64": "Commodore 64", "vic-20": "VIC-20",
 	}
 	if name, ok := names[slug]; ok {
 		return name
