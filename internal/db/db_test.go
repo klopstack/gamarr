@@ -283,6 +283,20 @@ func TestJobStore_ClearsStaleErrorOnRecovery(t *testing.T) {
 	}
 }
 
+func TestJobStore_ClearsErrorOnOrganizingViaSingleUpdate(t *testing.T) {
+	store := newTestStore(t)
+	store.Set("job", map[string]interface{}{
+		"status": "error",
+		"error":  "Cannot read the downloaded files",
+		"title":  "Some Game",
+	})
+	store.Update("job", "status", "organizing")
+	got, _ := store.Get("job")
+	if got["error"] != nil {
+		t.Errorf("error = %#v after organizing via Update, want nil without explicit error field", got["error"])
+	}
+}
+
 func TestJobStore_Persistence(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")

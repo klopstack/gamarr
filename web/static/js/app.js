@@ -466,7 +466,7 @@ function renderDownloadFileRow(f) {
         </div>
         ${hasProg ? `<div class="bg-slate-800 rounded-full h-1 mt-1.5 overflow-hidden"><div class="progress-bar bg-indigo-500 h-full rounded-full" style="width:${f.progress}%"></div></div>` : ''}
         ${f.detail ? `<div class="text-xs text-slate-500 mt-1">${esc(f.detail)}</div>` : ''}
-        ${f.error && f.status !== 'completed' ? `<div class="text-xs text-red-400 mt-1">${esc(f.error)}</div>` : ''}
+        ${f.error ? `<div class="text-xs text-red-400 mt-1">${esc(f.error)}</div>` : ''}
       </div>
       <div class="flex gap-1 flex-shrink-0">${actions}</div>
     </div>
@@ -516,7 +516,7 @@ function renderDownloads(downloads) {
       </div>
       ${hasProg ? `<div class="bg-slate-800 rounded-full h-1.5 overflow-hidden"><div class="progress-bar ${pctClass} h-full rounded-full" style="width:${d.progress}%"></div></div>` : ''}
       ${!isArchive && d.detail ? `<div class="text-xs text-slate-500 mt-1.5">${esc(d.detail)}</div>` : ''}
-      ${!isArchive && d.error && d.status !== 'completed' ? `<div class="text-xs text-red-400 mt-1">${esc(d.error)}</div>` : ''}
+      ${!isArchive && d.error ? `<div class="text-xs text-red-400 mt-1">${esc(d.error)}</div>` : ''}
       ${fileList}
     </div>`;
   }).join('');

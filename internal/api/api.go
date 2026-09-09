@@ -732,10 +732,10 @@ func (s *Server) handleDownloads(w http.ResponseWriter, r *http.Request) {
 			downloads = append(downloads, buildArchiveEntry(s, tor, hashJobs, statusMap, progress, speed))
 		case len(hashJobs) == 1:
 			matchedJobIDs[hashJobs[0].ID] = true
-			downloads = append(downloads, buildMergedJobEntry(hashJobs[0], tor, statusMap, progress, speed))
+			downloads = append(downloads, buildMergedJobEntry(s, hashJobs[0], tor, statusMap, progress, speed))
 		case titleJob != nil:
 			matchedJobIDs[titleJob.ID] = true
-			downloads = append(downloads, buildMergedJobEntry(*titleJob, tor, statusMap, progress, speed))
+			downloads = append(downloads, buildMergedJobEntry(s, *titleJob, tor, statusMap, progress, speed))
 		default:
 			status := tor.State
 			if mapped, ok := statusMap[tor.State]; ok {
@@ -808,7 +808,7 @@ func (s *Server) handleDownloads(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]interface{}{"downloads": downloads})
 }
 
-func buildMergedJobEntry(matchedJob struct {
+func buildMergedJobEntry(s *Server, matchedJob struct {
 	ID   string
 	Data map[string]interface{}
 }, tor qbit.Torrent, statusMap map[string]string, progress float64, speed string) models.DownloadEntry {
@@ -831,7 +831,7 @@ func buildMergedJobEntry(matchedJob struct {
 		JobID:    matchedJob.ID,
 		Error:    errMsg,
 		Detail:   detail,
-		Progress: progress,
+		Progress: mergedJobProgress(s, matchedJob, tor, progress),
 		Size:     search.HumanSize(tor.TotalSize),
 		Speed:    speed,
 		ETA:      tor.ETA,
@@ -839,6 +839,40 @@ func buildMergedJobEntry(matchedJob struct {
 		InfoHash: infoHash,
 		CanRetry: jobCanRetry(matchedJob.Data),
 	}
+}
+
+func mergedJobProgress(s *Server, matchedJob struct {
+	ID   string
+	Data map[string]interface{}
+}, tor qbit.Torrent, torrentProgress float64) float64 {
+	title := jTitle(matchedJob.Data)
+	if title == "" || strings.EqualFold(title, tor.Name) || isArchiveShellTitle(title, tor.Name) {
+		return torrentProgress
+	}
+	if !isArchiveROMTitle(title) {
+		return torrentProgress
+	}
+	status, _ := matchedJob.Data["status"].(string)
+	if status == "completed" || status == "completed_unorganized" {
+		return 100
+	}
+	if !s.cfg.HasQBittorrent() {
+		return 0
+	}
+	if f, ok := download.TorrentFileForTitle(s.mgr.QB().GetTorrentFiles(tor.Hash), title); ok {
+		return float64(int(f.Progress*1000)) / 10.0
+	}
+	return 0
+}
+
+func isArchiveROMTitle(title string) bool {
+	lower := strings.ToLower(title)
+	for _, ext := range []string{".zip", ".7z", ".rar", ".nsp", ".xci", ".iso"} {
+		if strings.HasSuffix(lower, ext) {
+			return true
+		}
+	}
+	return false
 }
 
 func buildArchiveEntry(s *Server, tor qbit.Torrent, hashJobs []struct {
@@ -861,6 +895,8 @@ func buildArchiveEntry(s *Server, tor qbit.Torrent, hashJobs []struct {
 			df.Progress = float64(int(f.Progress*1000)) / 10.0
 			df.Size = search.HumanSize(f.Size)
 			wantedBytes += f.Size
+		} else if df.Status == "completed" || df.Status == "completed_unorganized" {
+			df.Progress = 100
 		}
 		files = append(files, df)
 	}
@@ -892,7 +928,7 @@ func buildArchiveEntry(s *Server, tor qbit.Torrent, hashJobs []struct {
 			JobID:    j.JobID,
 			Error:    j.Error,
 			Detail:   j.Detail,
-			Progress: progress,
+			Progress: j.Progress,
 			Size:     firstNonEmpty(j.Size, search.HumanSize(tor.TotalSize)),
 			Speed:    speed,
 			ETA:      tor.ETA,

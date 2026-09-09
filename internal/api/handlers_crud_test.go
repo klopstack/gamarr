@@ -1330,3 +1330,38 @@ func TestDownloadsGroupsArchiveJobsByHash(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildArchiveEntryProgressWithoutMatchingFile(t *testing.T) {
+	const hash = "missing-file-hash"
+
+	qb := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/auth/login"):
+			w.Write([]byte("Ok."))
+		case strings.Contains(r.URL.Path, "/torrents/files"):
+			json.NewEncoder(w).Encode([]map[string]interface{}{})
+		default:
+			json.NewEncoder(w).Encode([]map[string]interface{}{{
+				"name": "Game Boy", "hash": hash, "progress": 0.78,
+				"state": "downloading", "total_size": 1_000_000, "dlspeed": 0, "eta": 0,
+			}})
+		}
+	}))
+	defer qb.Close()
+
+	env := newTestEnv(t, func(c *config.Config) { c.QBURL = qb.URL })
+	env.jobs.Set("job-a", map[string]interface{}{
+		"status": "downloading", "title": "Trip World (Europe).zip", "platform": "Game Boy", "info_hash": hash,
+	})
+
+	rr := env.do("GET", "/api/downloads", "")
+	wantStatus(t, rr, 200)
+	downloads, _ := decodeMap(t, rr)["downloads"].([]interface{})
+	if len(downloads) != 1 {
+		t.Fatalf("downloads = %d entries, want 1", len(downloads))
+	}
+	entry, _ := downloads[0].(map[string]interface{})
+	if p, _ := entry["progress"].(float64); p != 0 {
+		t.Errorf("progress = %v, want 0 when file is absent from qbit list (not whole-torrent 78%%)", p)
+	}
+}
