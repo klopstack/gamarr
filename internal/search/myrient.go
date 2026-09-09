@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"path"
 	"regexp"
 	"strings"
 	"sync"
@@ -94,6 +95,9 @@ func getMyrientListing(reg *sources.Registry, slug string) []dirEntry {
 		href := m[1]
 		name := m[2]
 		if href == "../" || strings.HasPrefix(href, "?") || strings.HasPrefix(href, "/") || strings.HasSuffix(name, "/") {
+			continue
+		}
+		if strings.HasSuffix(href, "/") || !myrientFileHref(href, name) {
 			continue
 		}
 		decoded, _ := url.QueryUnescape(name)
@@ -197,6 +201,26 @@ func SearchMyrient(reg *sources.Registry, query string, platformSlug string) []*
 	// Note: empty results for Myrient are normal (no match), not a failure.
 	// Failures are tracked inside getMyrientListing when HTTP errors occur.
 	return results
+}
+
+func myrientFileHref(href, name string) bool {
+	for _, s := range []string{href, name} {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		if dec, err := url.PathUnescape(s); err == nil {
+			s = dec
+		}
+		switch strings.ToLower(path.Ext(s)) {
+		case ".zip", ".7z", ".rar", ".rvz", ".iso", ".chd", ".wbfs", ".gcz",
+			".cso", ".nsp", ".xci", ".nsz", ".cia", ".nds", ".gba", ".gb", ".gbc",
+			".nes", ".sfc", ".smc", ".n64", ".z64", ".v64", ".cue", ".bin",
+			".pbp", ".wad", ".wux":
+			return true
+		}
+	}
+	return false
 }
 
 func countOverlap(a, b map[string]bool) int {

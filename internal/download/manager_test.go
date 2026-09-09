@@ -650,6 +650,65 @@ func TestDownloadDDLTruncatedDownloadIsError(t *testing.T) {
 	}
 }
 
+func TestDownloadDDLRejectsHTML(t *testing.T) {
+	html := []byte("<!DOCTYPE html>\n<html><title>Fast and Reliable Video Game Collections | Myrient</title></html>")
+	t.Run("content-type", func(t *testing.T) {
+		cfg := newTestConfig(t)
+		jobs := newTestJobs(t)
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Write(html)
+		}))
+		defer srv.Close()
+		m := New(cfg, jobs, nil)
+		dest := t.TempDir()
+		got, err := m.downloadDDL(srv.URL+"/Silent%20Hill%20(Europe).zip", dest, "j1")
+		if err == nil || got != "" {
+			t.Fatalf("got (%q, %v), want HTML error", got, err)
+		}
+		entries, _ := os.ReadDir(dest)
+		if len(entries) != 0 {
+			t.Errorf("HTML left on disk: %v", entries)
+		}
+	})
+	t.Run("body sniff", func(t *testing.T) {
+		cfg := newTestConfig(t)
+		jobs := newTestJobs(t)
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.Write(html)
+		}))
+		defer srv.Close()
+		m := New(cfg, jobs, nil)
+		dest := t.TempDir()
+		got, err := m.downloadDDL(srv.URL+"/Silent%20Hill%20(Europe).zip", dest, "j2")
+		if err == nil || got != "" {
+			t.Fatalf("got (%q, %v), want HTML error", got, err)
+		}
+		entries, _ := os.ReadDir(dest)
+		if len(entries) != 0 {
+			t.Errorf("HTML left on disk: %v", entries)
+		}
+	})
+}
+
+func TestDownloadDDLDecodesURLFilename(t *testing.T) {
+	cfg := newTestConfig(t)
+	jobs := newTestJobs(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("rom-bytes"))
+	}))
+	defer srv.Close()
+	m := New(cfg, jobs, nil)
+	got, err := m.downloadDDL(srv.URL+"/files/Silent%20Hill%20%28Europe%29.zip", cfg.QBSavePath, "j3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Base(got) != "Silent Hill (Europe).zip" {
+		t.Errorf("filename = %q, want decoded basename", filepath.Base(got))
+	}
+}
+
 func TestOrganizeDDLFile(t *testing.T) {
 	newFixture := func(t *testing.T) (*Manager, string, string) {
 		cfg := newTestConfig(t)

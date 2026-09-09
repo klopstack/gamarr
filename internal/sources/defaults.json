@@ -21,7 +21,8 @@
       "ngc":     "Redump/Nintendo - GameCube - NKit RVZ [zstd-19-128k]/",
       "wii":     "Redump/Nintendo - Wii - NKit RVZ [zstd-19-128k]/",
       "xbox":    "Redump/Microsoft - Xbox/",
-      "xbox360": "Redump/Microsoft - Xbox 360/"
+      "xbox360": "Redump/Microsoft - Xbox 360/",
+      "vic-20":  "No-Intro/Commodore - VIC-20/"
     }
   },
   "minerva": {
@@ -87,6 +88,7 @@
         "No-Intro/Commodore - Commodore 64/",
         "No-Intro/Commodore - Commodore 64 (Tapes)/"
       ],
+      "vic-20":   "No-Intro/Commodore - VIC-20/",
       "amiga":     "No-Intro/Commodore - Amiga/",
       "msx":       "No-Intro/Microsoft - MSX/",
       "msx2":      "No-Intro/Microsoft - MSX2/",

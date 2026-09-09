@@ -144,6 +144,18 @@ func TestCountOverlap(t *testing.T) {
 	}
 }
 
+func TestMyrientFileHref(t *testing.T) {
+	if !myrientFileHref("Silent%20Hill%20(Europe).zip", "Silent Hill (Europe).zip") {
+		t.Error("encoded zip href should count as a file")
+	}
+	if myrientFileHref("../", "../") || myrientFileHref("Redump/", "Redump/") {
+		t.Error("directory hrefs must be skipped")
+	}
+	if myrientFileHref("index.html", "index.html") {
+		t.Error("HTML index must not be enqueued as a ROM")
+	}
+}
+
 func TestClearMyrientCache(t *testing.T) {
 	// Just ensure it doesn't panic
 	ClearMyrientCache()

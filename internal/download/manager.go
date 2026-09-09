@@ -32,6 +32,7 @@ import (
 	"gamarr/internal/qbit"
 	"gamarr/internal/safety"
 	"gamarr/internal/search"
+	"gamarr/internal/sources"
 )
 
 // NotifyCallback is called when a download completes or fails.
@@ -744,12 +745,20 @@ func (m *Manager) resolveImportContentPath(jobID string, torrent *qbit.Torrent) 
 	if jobTitle == "" || strings.EqualFold(jobTitle, torrentName) || isGenericArchiveTorrentName(jobTitle) {
 		return contentPath
 	}
-	files := m.qb.GetTorrentFiles(torrent.Hash)
-	if len(files) <= 1 {
-		return contentPath
-	}
-	if f, ok := TorrentFileForTitle(files, jobTitle); ok {
+	if f, ok := TorrentFileForTitle(m.qb.GetTorrentFiles(torrent.Hash), jobTitle); ok {
 		return torrentFileContentPath(contentPath, f.Name)
+	}
+	// Only invent a member path inside an archive tree. A normal torrent
+	// whose title differs from its folder name must still import the folder.
+	if isArchiveTree(contentPath) {
+		platSlug := ""
+		if job, ok := m.jobs.Get(jobID); ok {
+			platSlug, _ = job["platform_slug"].(string)
+		}
+		if guess := archiveMemberUnderSlug(contentPath, jobTitle, platSlug, m.cfg.Sources); guess != "" {
+			return guess
+		}
+		return filepath.Join(contentPath, filepath.Base(jobTitle))
 	}
 	return contentPath
 }
@@ -758,7 +767,7 @@ func (m *Manager) resolveImportContentPath(jobID string, torrent *qbit.Torrent) 
 // qBittorrent file names include the torrent's internal root folder, which
 // content_path already ends with after a rename (Minerva_Myrient → Game Boy).
 func torrentFileContentPath(contentPath, fileName string) string {
-	rel := filepath.FromSlash(fileName)
+	rel := stripArchiveRootPrefix(filepath.FromSlash(fileName))
 	if base := filepath.Base(contentPath); base != "" {
 		prefix := base + string(os.PathSeparator)
 		if strings.HasPrefix(rel, prefix) {
@@ -766,6 +775,92 @@ func torrentFileContentPath(contentPath, fileName string) string {
 		}
 	}
 	return filepath.Join(contentPath, rel)
+}
+
+func stripArchiveRootPrefix(rel string) string {
+	for {
+		first, rest, ok := strings.Cut(rel, string(os.PathSeparator))
+		if !ok || !isGenericArchiveTorrentName(first) {
+			return rel
+		}
+		rel = rest
+	}
+}
+
+func isArchiveTree(path string) bool {
+	if path == "" {
+		return false
+	}
+	if isGenericArchiveTorrentName(filepath.Base(path)) {
+		return true
+	}
+	fi, err := os.Stat(path)
+	if err != nil || !fi.IsDir() {
+		return false
+	}
+	for _, name := range []string{"No-Intro", "Redump", "MAME"} {
+		st, err := os.Stat(filepath.Join(path, name))
+		if err == nil && st.IsDir() {
+			return true
+		}
+	}
+	return false
+}
+
+func archiveMemberUnderSlug(root, title, platSlug string, reg *sources.Registry) string {
+	base := filepath.Base(title)
+	if root == "" || base == "" || base == "." || platSlug == "" || reg == nil {
+		return ""
+	}
+	if _, paths, ok := reg.Minerva.ResolveSlug(platSlug); ok {
+		for _, p := range paths {
+			return filepath.Join(root, filepath.FromSlash(strings.Trim(p, "/")), base)
+		}
+	}
+	if p, ok := reg.Myrient.PlatformPaths[platSlug]; ok && p != "" {
+		return filepath.Join(root, filepath.FromSlash(strings.Trim(p, "/")), base)
+	}
+	return ""
+}
+
+func rommSlugForImport(platSlug, filePath, contentRoot string, reg *sources.Registry) string {
+	slug := strings.TrimSpace(platSlug)
+	keep := slug != "" && !isGenericArchiveTorrentName(slug) &&
+		!strings.EqualFold(slug, "unknown") && !strings.EqualFold(slug, "pc")
+	if keep {
+		return slug
+	}
+	rel := filepath.Base(filePath)
+	if contentRoot != "" {
+		if r, err := filepath.Rel(contentRoot, filePath); err == nil && r != "." && !strings.HasPrefix(r, "..") {
+			rel = r
+		}
+	}
+	if mapped, ok := reg.SlugForArchivePath(rel); ok {
+		return mapped
+	}
+	if slug != "" && !isGenericArchiveTorrentName(slug) {
+		return slug
+	}
+	return ""
+}
+
+func looksLikeArchiveMember(root, file string) bool {
+	if isArchiveTree(root) {
+		return true
+	}
+	rel := filepath.ToSlash(file)
+	if root != "" {
+		if r, err := filepath.Rel(root, file); err == nil {
+			rel = filepath.ToSlash(r)
+		}
+	}
+	for _, part := range []string{"No-Intro/", "Redump/", "MAME/"} {
+		if strings.Contains(rel, part) {
+			return true
+		}
+	}
+	return false
 }
 
 // shouldFinishTorrent reports whether the client may drop this torrent after an
@@ -1020,9 +1115,9 @@ func (m *Manager) organizeGame(jobID string, torrent *qbit.Torrent, platf, platS
 	contentPath := m.resolveImportContentPath(jobID, torrent)
 	torrentName := torrent.Name
 	torrentHash := torrent.Hash
-	importName := filepath.Base(contentPath)
+	importName := sanitizeFilename(filepath.Base(contentPath))
 	if importName == "" || importName == "." {
-		importName = torrentName
+		importName = sanitizeFilename(torrentName)
 	}
 
 	if _, statErr := os.Stat(contentPath); statErr != nil {
@@ -1046,7 +1141,33 @@ func (m *Manager) organizeGame(jobID string, torrent *qbit.Torrent, platf, platS
 		return missing
 	}
 
+	if isArchiveTree(contentPath) {
+		// The archive root is not a ROM and not a vault game. Importing it
+		// as dest basename Minerva_Myrient copies the whole Myrient tree
+		// into GAMES_ROMS_PATH/<slug>/ (or into the vault when is_pc).
+		m.jobs.UpdateMulti(jobID, map[string]interface{}{
+			"status": "error",
+			"error":  "Refusing to import the Minerva/Myrient archive tree as a library folder; waiting for a single ROM file",
+		})
+		slog.Error("refusing archive tree import", "path", sanitizeLog(contentPath), "job_id", jobID)
+		return true
+	}
+	if looksLikeHTMLFile(contentPath) {
+		m.jobs.UpdateMulti(jobID, map[string]interface{}{
+			"status": "error",
+			"error":  "Download is an HTML page, not a ROM file — skipped",
+		})
+		slog.Error("refusing HTML import", "path", sanitizeLog(contentPath), "job_id", jobID)
+		return false
+	}
+
 	platf, platSlug, isPC = m.resolvePlatform(jobID, contentPath, torrentName, platf, platSlug, isPC)
+	if mapped := rommSlugForImport(platSlug, contentPath, torrent.ContentPath, m.cfg.Sources); mapped != "" {
+		platSlug = mapped
+	}
+	if isPC && looksLikeArchiveMember(torrent.ContentPath, contentPath) {
+		isPC = false
+	}
 
 	// DetectConsoleROM above is the first guard on this boundary and is narrow
 	// by design, so everything it does not cover arrives here and this if/else
@@ -1096,6 +1217,14 @@ func (m *Manager) organizeGame(jobID string, torrent *qbit.Torrent, platf, platS
 		dest := filepath.Join(destDir, sanitizeFilename(importName))
 		defer lockDest(dest)()
 		destExisted := destPresent(dest)
+		if destIsExistingFile(dest) {
+			m.jobs.UpdateMulti(jobID, map[string]interface{}{
+				"status": "error",
+				"error":  fmt.Sprintf("%s: %s", fileops.ErrDestinationOccupied, dest),
+				"detail": occupiedDetail,
+			})
+			return false
+		}
 		mode, err := m.importContent(contentPath, dest)
 		importMode = mode
 		if err != nil {
@@ -1546,7 +1675,12 @@ func (m *Manager) runDDLDownloadWorker(jobID, dlURL, vimmID, title, platf, platS
 	if vimmID != "" {
 		filepath_ = m.downloadVimmGame(vimmID, staging, jobID)
 	} else if dlURL != "" {
-		filepath_, dlErr = m.downloadDDL(dlURL, staging, jobID)
+		if isMyrientDirectoryURL(dlURL) {
+			dlErr = fmt.Errorf("refusing Myrient directory/index URL (not a ROM file)")
+			slog.Error("skipped Myrient directory URL", "url", sanitizeLog(dlURL))
+		} else {
+			filepath_, dlErr = m.downloadDDL(dlURL, staging, jobID)
+		}
 	}
 
 	source := m.ddlSourceName(dlURL, vimmID)
@@ -1653,6 +1787,10 @@ func (m *Manager) downloadDDL(dlURL, destPath, jobID string) (string, error) {
 		slog.Error("DDL download failed", "url", sanitizeLog(dlURL), "status", resp.StatusCode)
 		return "", fmt.Errorf("HTTP %d from server", resp.StatusCode)
 	}
+	if isHTMLContentType(resp.Header.Get("Content-Type")) {
+		slog.Error("DDL returned HTML instead of a ROM", "url", sanitizeLog(dlURL))
+		return "", fmt.Errorf("server returned HTML instead of a ROM file")
+	}
 
 	total := resp.ContentLength
 	cd := resp.Header.Get("Content-Disposition")
@@ -1665,7 +1803,8 @@ func (m *Manager) downloadDDL(dlURL, destPath, jobID string) (string, error) {
 		filename = parts[len(parts)-1]
 	}
 	// The filename comes from the remote server (Content-Disposition or URL);
-	// never let it name a path outside the staging dir.
+	// never let it name a path outside the staging dir. Decode %XX so a
+	// Myrient path segment does not become the library basename.
 	filename = sanitizeFilename(filename)
 
 	fp, err := safeChild(destPath, filename)
@@ -1716,6 +1855,11 @@ func (m *Manager) downloadDDL(dlURL, destPath, jobID string) (string, error) {
 	if total > 0 && downloaded != total {
 		os.Remove(fp)
 		return "", fmt.Errorf("incomplete download: got %s of %s", search.HumanSize(downloaded), search.HumanSize(total))
+	}
+	if looksLikeHTMLFile(fp) {
+		os.Remove(fp)
+		slog.Error("DDL body is HTML, not a ROM", "url", sanitizeLog(dlURL))
+		return "", fmt.Errorf("server returned HTML instead of a ROM file")
 	}
 	m.jobs.Update(jobID, "detail", fmt.Sprintf("Downloaded %s", search.HumanSize(downloaded)))
 	return fp, nil
@@ -2211,10 +2355,29 @@ func (m *Manager) downloadVimmGame(gameID, destPath, jobID string) string {
 }
 
 func (m *Manager) organizeDDLFile(jobID, fp, title, platf, platSlug string, isPC bool) {
+	if looksLikeHTMLFile(fp) {
+		os.Remove(fp)
+		m.jobs.UpdateMulti(jobID, map[string]interface{}{
+			"status": "error",
+			"error":  "Download is an HTML page, not a ROM file — skipped",
+		})
+		slog.Error("refusing HTML DDL import", "path", sanitizeLog(fp), "job_id", jobID)
+		return
+	}
 	filename := sanitizeFilename(filepath.Base(fp))
+	if mapped := rommSlugForImport(platSlug, fp, "", m.cfg.Sources); mapped != "" {
+		platSlug = mapped
+	}
 	platf, platSlug, isPC = m.resolvePlatform(jobID, fp, title, platf, platSlug, isPC)
 	if isPC {
 		dest := filepath.Join(m.cfg.GamesVaultPath, filename)
+		if destIsExistingFile(dest) {
+			m.jobs.UpdateMulti(jobID, map[string]interface{}{
+				"status": "error", "error": fmt.Sprintf("%s: %s", fileops.ErrDestinationOccupied, dest),
+				"detail": occupiedDetail,
+			})
+			return
+		}
 		if err := moveFile(fp, dest); err != nil {
 			m.jobs.UpdateMulti(jobID, map[string]interface{}{
 				"status": "error", "error": fmt.Sprintf("Organize failed: %v", err),
@@ -2230,6 +2393,13 @@ func (m *Manager) organizeDDLFile(jobID, fp, title, platf, platSlug string, isPC
 		destDir := filepath.Join(m.cfg.GamesRomsPath, sanitizeFilename(platSlug))
 		os.MkdirAll(destDir, 0755)
 		dest := filepath.Join(destDir, filename)
+		if destIsExistingFile(dest) {
+			m.jobs.UpdateMulti(jobID, map[string]interface{}{
+				"status": "error", "error": fmt.Sprintf("%s: %s", fileops.ErrDestinationOccupied, dest),
+				"detail": occupiedDetail,
+			})
+			return
+		}
 		if err := moveFile(fp, dest); err != nil {
 			m.jobs.UpdateMulti(jobID, map[string]interface{}{
 				"status": "error", "error": fmt.Sprintf("Organize failed: %v", err),

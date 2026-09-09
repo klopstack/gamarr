@@ -94,6 +94,12 @@ func (w *Watcher) checkCompleted() {
 		if w.hasMatchingJob(t) {
 			continue
 		}
+		// Shared Minerva magnet is not one game. Per-ROM jobs import members;
+		// treating the torrent as a finished PC title writes Minerva_Myrient
+		// into the vault (which this install binds onto the ROM library).
+		if isGenericArchiveTorrentName(t.Name) || isArchiveTree(t.ContentPath) {
+			continue
+		}
 
 		w.processing.Store(t.Hash, struct{}{})
 		go w.importTorrent(t)

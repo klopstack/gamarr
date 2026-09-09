@@ -21,6 +21,9 @@ func TestSanitizeFilename(t *testing.T) {
 		{".", "download"},
 		{"", "download"},
 		{"  spaced.zip  ", "spaced.zip"},
+		{"Silent%20Hill%20-%20Shattered%20Memories%20%28Europe%29%20%28En%2CFr%2CDe%2CEs%2CIt%29.zip",
+			"Silent Hill - Shattered Memories (Europe) (En,Fr,De,Es,It).zip"},
+		{"100% Cotton.zip", "100% Cotton.zip"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.in, func(t *testing.T) {

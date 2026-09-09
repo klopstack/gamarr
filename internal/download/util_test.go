@@ -33,6 +33,49 @@ func TestCleanTitle(t *testing.T) {
 	}
 }
 
+func TestDecodePercentName(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"Silent%20Hill%20(Europe).zip", "Silent Hill (Europe).zip"},
+		{"Game%28USA%29%2C%20Rev.zip", "Game(USA), Rev.zip"},
+		{"100% Cotton.zip", "100% Cotton.zip"},
+		{"plain.zip", "plain.zip"},
+	}
+	for _, tc := range cases {
+		if got := decodePercentName(tc.in); got != tc.want {
+			t.Errorf("decodePercentName(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestIsMyrientDirectoryURL(t *testing.T) {
+	if !isMyrientDirectoryURL("https://myrient.erista.me/files/Redump/Nintendo - Wii - NKit RVZ [zstd-19-128k]/") {
+		t.Error("collection listing should be rejected")
+	}
+	if !isMyrientDirectoryURL("https://myrient.erista.me/files/Redump/Nintendo%20-%20Wii/") {
+		t.Error("encoded collection listing should be rejected")
+	}
+	if isMyrientDirectoryURL("https://myrient.erista.me/files/Redump/Nintendo%20-%20Wii/Silent%20Hill%20(Europe).zip") {
+		t.Error("file URL should be allowed")
+	}
+	if isMyrientDirectoryURL("http://127.0.0.1:9/files/zelda.gba") {
+		t.Error("non-Myrient test URLs must stay allowed")
+	}
+}
+
+func TestIsHTMLPayload(t *testing.T) {
+	if !isHTMLPayload([]byte("<!DOCTYPE html>\n<html><title>Myrient</title>")) {
+		t.Error("doctype html should match")
+	}
+	if !isHTMLPayload([]byte("  <html lang=\"en\">Fast and Reliable")) {
+		t.Error("<html prefix should match")
+	}
+	if isHTMLPayload([]byte("PK\x03\x04romzip")) {
+		t.Error("zip magic must not match")
+	}
+}
+
 func TestTitlesMatch(t *testing.T) {
 	tests := []struct {
 		name        string

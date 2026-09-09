@@ -1,10 +1,15 @@
 package download
 
 import (
+	"bytes"
 	"crypto/rand"
 	"fmt"
 	"io"
+	"net/url"
+	"os"
+	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -18,12 +23,97 @@ func cryptoReader() io.Reader {
 // The filepath.IsLocal gate is what makes the result safe to join onto a
 // trusted base directory.
 func sanitizeFilename(name string) string {
+	name = decodePercentName(name)
 	name = strings.ReplaceAll(name, "\\", "/")
 	name = strings.TrimSpace(filepath.Base(name))
 	if name == "" || name == "." || !filepath.IsLocal(name) {
 		return "download"
 	}
 	return name
+}
+
+// decodePercentName unescapes %XX sequences (Myrient URL path segments).
+// A literal "100% Cotton" has no hex escape and is left alone.
+var pctHexRe = regexp.MustCompile(`%[0-9A-Fa-f]{2}`)
+
+func decodePercentName(name string) string {
+	if !pctHexRe.MatchString(name) {
+		return name
+	}
+	if dec, err := url.PathUnescape(name); err == nil && dec != "" {
+		return dec
+	}
+	return name
+}
+
+func destIsExistingFile(p string) bool {
+	fi, err := os.Lstat(p)
+	return err == nil && !fi.IsDir()
+}
+
+func isHTMLContentType(ct string) bool {
+	ct = strings.ToLower(strings.TrimSpace(ct))
+	if i := strings.IndexByte(ct, ';'); i >= 0 {
+		ct = strings.TrimSpace(ct[:i])
+	}
+	return ct == "text/html" || ct == "application/xhtml+xml"
+}
+
+func isHTMLPayload(b []byte) bool {
+	s := bytes.TrimSpace(b)
+	if len(s) == 0 {
+		return false
+	}
+	if len(s) > 64 {
+		s = s[:64]
+	}
+	ls := bytes.ToLower(s)
+	return bytes.HasPrefix(ls, []byte("<!doctype html")) || bytes.HasPrefix(ls, []byte("<html"))
+}
+
+func looksLikeHTMLFile(p string) bool {
+	fi, err := os.Stat(p)
+	if err != nil || fi.IsDir() {
+		return false
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	buf := make([]byte, 512)
+	n, _ := f.Read(buf)
+	return isHTMLPayload(buf[:n])
+}
+
+// isMyrientDirectoryURL reports a Myrient listing/index URL, which returns
+// the site HTML page rather than a ROM. File URLs keep an archive extension.
+func isMyrientDirectoryURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	if !strings.Contains(strings.ToLower(u.Host), "myrient") {
+		return false
+	}
+	p := u.Path
+	if p == "" || strings.HasSuffix(p, "/") {
+		return true
+	}
+	name := decodePercentName(path.Base(p))
+	return !isROMArchiveExt(path.Ext(name))
+}
+
+func isROMArchiveExt(ext string) bool {
+	switch strings.ToLower(ext) {
+	case ".zip", ".7z", ".rar", ".rvz", ".iso", ".chd", ".wbfs", ".gcz",
+		".cso", ".nsp", ".xci", ".nsz", ".cia", ".nds", ".gba", ".gb", ".gbc",
+		".nes", ".sfc", ".smc", ".n64", ".z64", ".v64", ".cue", ".bin",
+		".pbp", ".wad", ".wux":
+		return true
+	default:
+		return false
+	}
 }
 
 // safeChild joins name onto dir and guarantees the result stays inside dir,
