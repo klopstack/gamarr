@@ -115,6 +115,11 @@ type Config struct {
 	SchedulerAutoDownload  bool
 	SchedulerMinScore      int
 
+	// Release matching — ordered best-first; used to break ties among equally
+	// scored No-Intro / Minerva dumps (e.g. USA before Europe).
+	PreferredRegions   []string
+	PreferredLanguages []string
+
 	// Retry
 	MaxRetries          int
 	RetryBackoffSeconds int
@@ -246,6 +251,9 @@ func Load() *Config {
 		SchedulerIntervalHours: envInt("SCHEDULER_INTERVAL_HOURS", 24),
 		SchedulerAutoDownload:  envBool("SCHEDULER_AUTO_DOWNLOAD", true),
 		SchedulerMinScore:      envInt("SCHEDULER_MIN_SCORE", 70),
+
+		PreferredRegions:   envStrSlice("PREFERRED_REGIONS", nil),
+		PreferredLanguages: envStrSlice("PREFERRED_LANGUAGES", nil),
 
 		AuthUsername: envStr("AUTH_USERNAME", ""),
 		AuthPassword: envStr("AUTH_PASSWORD", ""),
@@ -407,6 +415,25 @@ func envBool(key string, fallback bool) bool {
 		return fallback
 	}
 	return s == "true" || s == "1" || s == "yes"
+}
+
+func envStrSlice(key string, fallback []string) []string {
+	s := os.Getenv(key)
+	if s == "" {
+		return fallback
+	}
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	if len(result) == 0 {
+		return fallback
+	}
+	return result
 }
 
 func envIntSlice(key string, fallback []int) []int {

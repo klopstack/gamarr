@@ -225,7 +225,8 @@ func main() {
 		if results == nil {
 			results = []*models.SearchResult{}
 		}
-		results = search.ScoreResults(results, query, platformSlug)
+		prefs := search.NewRegionPreferences(cfg.PreferredRegions, cfg.PreferredLanguages)
+		results = search.ScoreResults(results, query, platformSlug, prefs)
 		return results
 	}
 

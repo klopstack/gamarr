@@ -34,9 +34,10 @@ var platformSizeRange = map[string][2]int64{
 }
 
 // ScoreResults applies scoring to all results and returns them (modifies in place).
-func ScoreResults(results []*models.SearchResult, query string, platformFilter string) []*models.SearchResult {
+func ScoreResults(results []*models.SearchResult, query, platformFilter string, prefs RegionPreferences) []*models.SearchResult {
 	for _, r := range results {
 		sb := scoreResult(r, query, platformFilter)
+		regionRank, langRank := regionPreferenceRank(r.Title, prefs)
 		r.Score = sb.Total
 		r.ScoreBreakdown = &models.ScoreBreakdown{
 			TitleMatch:    sb.TitleMatch,
@@ -44,6 +45,8 @@ func ScoreResults(results []*models.SearchResult, query string, platformFilter s
 			SeederScore:   sb.SeederScore,
 			SizeScore:     sb.SizeScore,
 			SafetyScore:   sb.SafetyScore,
+			RegionRank:    regionRank,
+			LanguageRank:  langRank,
 			Total:         sb.Total,
 			Confidence:    sb.Confidence,
 		}
@@ -51,15 +54,34 @@ func ScoreResults(results []*models.SearchResult, query string, platformFilter s
 	return results
 }
 
-// SortByScore puts Minerva hits first, then the rest by score descending.
-// Minerva is a known-good archive torrent; it outranks Prowlarr even when a
-// tracker row has more seeders.
-func SortByScore(results []*models.SearchResult) {
+// SortByScore puts Minerva hits first, then score descending, then region/language
+// preference ranks when configured (PREFERRED_REGIONS / PREFERRED_LANGUAGES).
+func SortByScore(results []*models.SearchResult, prefs RegionPreferences) {
 	sort.SliceStable(results, func(i, j int) bool {
 		if mi, mj := results[i].Indexer == "Minerva", results[j].Indexer == "Minerva"; mi != mj {
 			return mi
 		}
-		return results[i].Score > results[j].Score
+		if results[i].Score != results[j].Score {
+			return results[i].Score > results[j].Score
+		}
+		if !prefs.Enabled() {
+			return false
+		}
+		ri, li := 0, 0
+		rj, lj := 0, 0
+		if results[i].ScoreBreakdown != nil {
+			ri, li = results[i].ScoreBreakdown.RegionRank, results[i].ScoreBreakdown.LanguageRank
+		}
+		if results[j].ScoreBreakdown != nil {
+			rj, lj = results[j].ScoreBreakdown.RegionRank, results[j].ScoreBreakdown.LanguageRank
+		}
+		if ri != rj {
+			return ri < rj
+		}
+		if li != lj {
+			return li < lj
+		}
+		return false
 	})
 }
 

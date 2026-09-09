@@ -34,13 +34,15 @@ type SearchResult struct {
 
 // ScoreBreakdown provides a detailed breakdown of a search result's confidence score.
 type ScoreBreakdown struct {
-	TitleMatch    int    `json:"title_match"`    // 0-40
-	PlatformMatch int    `json:"platform_match"` // 0-15
-	SeederScore   int    `json:"seeder_score"`   // 0-15
-	SizeScore     int    `json:"size_score"`     // 0-15
-	SafetyScore   int    `json:"safety_score"`   // 0-15
-	Total         int    `json:"total"`          // 0-100
-	Confidence    string `json:"confidence"`     // "high", "medium", "low"
+	TitleMatch    int    `json:"title_match"`              // 0-40
+	PlatformMatch int    `json:"platform_match"`           // 0-15
+	SeederScore   int    `json:"seeder_score"`             // 0-15
+	SizeScore     int    `json:"size_score"`               // 0-15
+	SafetyScore   int    `json:"safety_score"`             // 0-15
+	RegionRank    int    `json:"region_rank,omitempty"`    // lower = better match vs PREFERRED_REGIONS
+	LanguageRank  int    `json:"language_rank,omitempty"`  // lower = better match vs PREFERRED_LANGUAGES
+	Total         int    `json:"total"`                    // 0-100
+	Confidence    string `json:"confidence"`               // "high", "medium", "low"
 }
 
 // Job represents a download job.

@@ -10,7 +10,7 @@ func TestScoreResults_ExactMatch(t *testing.T) {
 	results := []*models.SearchResult{
 		{Title: "Super Mario Bros", Seeders: 50, Size: 1_000_000, PlatformSlug: "nes", SourceType: "torrent", SafetyScore: 80},
 	}
-	scored := ScoreResults(results, "Super Mario Bros", "nes")
+	scored := ScoreResults(results, "Super Mario Bros", "nes", RegionPreferences{})
 	if len(scored) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(scored))
 	}
@@ -28,7 +28,7 @@ func TestScoreResults_SubstringMatch(t *testing.T) {
 	results := []*models.SearchResult{
 		{Title: "Super Mario Bros Deluxe Edition", Seeders: 10, Size: 1_000_000, PlatformSlug: "nes"},
 	}
-	scored := ScoreResults(results, "Super Mario Bros", "")
+	scored := ScoreResults(results, "Super Mario Bros", "", RegionPreferences{})
 	if scored[0].ScoreBreakdown.TitleMatch != 35 {
 		t.Errorf("TitleMatch=%d, want 35 (substring match)", scored[0].ScoreBreakdown.TitleMatch)
 	}
@@ -39,7 +39,7 @@ func TestScoreResults_WordOverlap(t *testing.T) {
 		{Title: "Mario Kart Double Dash", Seeders: 10, Size: 1_000_000_000, PlatformSlug: "ngc"},
 	}
 	// "mario" overlaps, "bros" doesn't -> 50% of 40 = 20
-	scored := ScoreResults(results, "Mario Bros", "")
+	scored := ScoreResults(results, "Mario Bros", "", RegionPreferences{})
 	if scored[0].ScoreBreakdown.TitleMatch != 20 {
 		t.Errorf("TitleMatch=%d, want 20 (50%% word overlap)", scored[0].ScoreBreakdown.TitleMatch)
 	}
@@ -49,7 +49,7 @@ func TestScoreResults_EmptyQuery(t *testing.T) {
 	results := []*models.SearchResult{
 		{Title: "Some Game", Seeders: 10, Size: 1_000_000_000},
 	}
-	scored := ScoreResults(results, "", "")
+	scored := ScoreResults(results, "", "", RegionPreferences{})
 	// Empty query should give neutral title score (20)
 	if scored[0].ScoreBreakdown.TitleMatch != 20 {
 		t.Errorf("TitleMatch=%d, want 20 (empty query)", scored[0].ScoreBreakdown.TitleMatch)
@@ -61,7 +61,7 @@ func TestScoreResults_PlatformBonus(t *testing.T) {
 		{Title: "Game A", PlatformSlug: "switch", Seeders: 10, Size: 1_000_000_000},
 		{Title: "Game B", PlatformSlug: "nes", Seeders: 10, Size: 1_000_000},
 	}
-	scored := ScoreResults(results, "Game", "switch")
+	scored := ScoreResults(results, "Game", "switch", RegionPreferences{})
 
 	// Matching platform
 	if scored[0].ScoreBreakdown.PlatformMatch != 15 {
@@ -77,7 +77,7 @@ func TestScoreResults_PlatformNeutral(t *testing.T) {
 	results := []*models.SearchResult{
 		{Title: "Game", PlatformSlug: "nes", Seeders: 10, Size: 1_000_000},
 	}
-	scored := ScoreResults(results, "Game", "")
+	scored := ScoreResults(results, "Game", "", RegionPreferences{})
 	// No filter -> neutral 8
 	if scored[0].ScoreBreakdown.PlatformMatch != 8 {
 		t.Errorf("no filter: PlatformMatch=%d, want 8", scored[0].ScoreBreakdown.PlatformMatch)
@@ -88,7 +88,7 @@ func TestScoreResults_PlatformAll(t *testing.T) {
 	results := []*models.SearchResult{
 		{Title: "Game", PlatformSlug: "nes", Seeders: 10, Size: 1_000_000},
 	}
-	scored := ScoreResults(results, "Game", "all")
+	scored := ScoreResults(results, "Game", "all", RegionPreferences{})
 	if scored[0].ScoreBreakdown.PlatformMatch != 8 {
 		t.Errorf("all filter: PlatformMatch=%d, want 8", scored[0].ScoreBreakdown.PlatformMatch)
 	}
@@ -99,7 +99,7 @@ func TestScoreResults_PCPlatformMatch(t *testing.T) {
 		{Title: "Game", PlatformSlug: "pc", Seeders: 10, Size: 5_000_000_000},
 		{Title: "Game", PlatformSlug: "", Seeders: 10, Size: 5_000_000_000},
 	}
-	scored := ScoreResults(results, "Game", "pc")
+	scored := ScoreResults(results, "Game", "pc", RegionPreferences{})
 	// Both "pc" and "" should match when filtering for "pc"
 	if scored[0].ScoreBreakdown.PlatformMatch != 15 {
 		t.Errorf("pc slug: PlatformMatch=%d, want 15", scored[0].ScoreBreakdown.PlatformMatch)
@@ -113,7 +113,7 @@ func TestScoreResults_MinervaSeederScore(t *testing.T) {
 	results := []*models.SearchResult{
 		{Title: "Game", Seeders: 0, Size: 1_000_000_000, SourceType: "torrent", Indexer: "Minerva"},
 	}
-	scored := ScoreResults(results, "Game", "")
+	scored := ScoreResults(results, "Game", "", RegionPreferences{})
 	if scored[0].ScoreBreakdown.SeederScore != 10 {
 		t.Errorf("Minerva SeederScore=%d, want 10", scored[0].ScoreBreakdown.SeederScore)
 	}
@@ -125,7 +125,7 @@ func TestSortByScore_MinervaBeforeProwlarr(t *testing.T) {
 		{Title: "Game (USA).zip", Score: 70, Indexer: "Minerva"},
 		{Title: "Game Deluxe", Score: 80, Indexer: "Myrient"},
 	}
-	SortByScore(results)
+	SortByScore(results, RegionPreferences{})
 	if results[0].Indexer != "Minerva" {
 		t.Fatalf("first = %q, want Minerva", results[0].Indexer)
 	}
@@ -138,7 +138,7 @@ func TestScoreResults_DDLSeederScore(t *testing.T) {
 	results := []*models.SearchResult{
 		{Title: "Game", Seeders: 0, Size: 1_000_000_000, SourceType: "ddl"},
 	}
-	scored := ScoreResults(results, "Game", "")
+	scored := ScoreResults(results, "Game", "", RegionPreferences{})
 	// DDL gets flat 10
 	if scored[0].ScoreBreakdown.SeederScore != 10 {
 		t.Errorf("DDL SeederScore=%d, want 10", scored[0].ScoreBreakdown.SeederScore)
@@ -149,7 +149,7 @@ func TestScoreResults_NZBSeederScore(t *testing.T) {
 	results := []*models.SearchResult{
 		{Title: "Game", Seeders: 0, Size: 1_000_000_000, SourceType: "torrent", DownloadProtocol: "nzb"},
 	}
-	scored := ScoreResults(results, "Game", "")
+	scored := ScoreResults(results, "Game", "", RegionPreferences{})
 	if scored[0].ScoreBreakdown.SeederScore != 10 {
 		t.Errorf("NZB SeederScore=%d, want 10", scored[0].ScoreBreakdown.SeederScore)
 	}
@@ -176,7 +176,7 @@ func TestScoreResults_SeederTiers(t *testing.T) {
 			results := []*models.SearchResult{
 				{Title: "Game", Seeders: tt.seeders, Size: 1_000_000_000, SourceType: "torrent"},
 			}
-			scored := ScoreResults(results, "Game", "")
+			scored := ScoreResults(results, "Game", "", RegionPreferences{})
 			if scored[0].ScoreBreakdown.SeederScore != tt.want {
 				t.Errorf("SeederScore=%d, want %d", scored[0].ScoreBreakdown.SeederScore, tt.want)
 			}
@@ -191,7 +191,7 @@ func TestScoreResults_SizeInRange(t *testing.T) {
 		{Title: "Game", Seeders: 10, Size: 100_000_000, PlatformSlug: "nes"}, // 100MB way out of range
 		{Title: "Game", Seeders: 10, Size: 0, PlatformSlug: "nes"},           // unknown
 	}
-	scored := ScoreResults(results, "Game", "")
+	scored := ScoreResults(results, "Game", "", RegionPreferences{})
 	if scored[0].ScoreBreakdown.SizeScore != 15 {
 		t.Errorf("in-range SizeScore=%d, want 15", scored[0].ScoreBreakdown.SizeScore)
 	}
@@ -208,7 +208,7 @@ func TestScoreResults_SizeSlightlyOutOfRange(t *testing.T) {
 	results := []*models.SearchResult{
 		{Title: "Game", Seeders: 10, Size: 7_000_000, PlatformSlug: "nes"}, // 7MB: > 5MB but < 10MB
 	}
-	scored := ScoreResults(results, "Game", "")
+	scored := ScoreResults(results, "Game", "", RegionPreferences{})
 	if scored[0].ScoreBreakdown.SizeScore != 10 {
 		t.Errorf("slightly-out SizeScore=%d, want 10", scored[0].ScoreBreakdown.SizeScore)
 	}
@@ -231,7 +231,7 @@ func TestScoreResults_SafetyScore(t *testing.T) {
 			results := []*models.SearchResult{
 				{Title: "Game", Seeders: 10, Size: 1_000_000_000, SafetyScore: tt.score},
 			}
-			scored := ScoreResults(results, "Game", "")
+			scored := ScoreResults(results, "Game", "", RegionPreferences{})
 			if scored[0].ScoreBreakdown.SafetyScore != tt.want {
 				t.Errorf("SafetyScore=%d, want %d", scored[0].ScoreBreakdown.SafetyScore, tt.want)
 			}
@@ -262,7 +262,7 @@ func TestScoreResults_Confidence(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			results := []*models.SearchResult{tt.result}
-			scored := ScoreResults(results, tt.query, tt.result.PlatformSlug)
+			scored := ScoreResults(results, tt.query, tt.result.PlatformSlug, RegionPreferences{})
 			if scored[0].ScoreBreakdown.Confidence != tt.want {
 				t.Errorf("Confidence=%q (total=%d), want %q", scored[0].ScoreBreakdown.Confidence, scored[0].Score, tt.want)
 			}
@@ -275,7 +275,7 @@ func TestScoreResults_TotalClamped(t *testing.T) {
 	results := []*models.SearchResult{
 		{Title: "Game", Seeders: 100, Size: 5_000_000_000, PlatformSlug: "pc", SourceType: "torrent", SafetyScore: 100},
 	}
-	scored := ScoreResults(results, "Game", "pc")
+	scored := ScoreResults(results, "Game", "pc", RegionPreferences{})
 	if scored[0].Score > 100 {
 		t.Errorf("Total=%d, should be clamped to 100", scored[0].Score)
 	}
@@ -285,12 +285,12 @@ func TestScoreResults_TotalClamped(t *testing.T) {
 }
 
 func TestScoreResults_EmptyResults(t *testing.T) {
-	scored := ScoreResults(nil, "query", "pc")
+	scored := ScoreResults(nil, "query", "pc", RegionPreferences{})
 	if scored != nil {
 		t.Errorf("expected nil for nil input, got %v", scored)
 	}
 
-	scored = ScoreResults([]*models.SearchResult{}, "query", "pc")
+	scored = ScoreResults([]*models.SearchResult{}, "query", "pc", RegionPreferences{})
 	if len(scored) != 0 {
 		t.Errorf("expected empty for empty input, got %d", len(scored))
 	}
@@ -301,7 +301,7 @@ func TestScoreResults_UnknownPlatformSize(t *testing.T) {
 	results := []*models.SearchResult{
 		{Title: "Game", Seeders: 10, Size: 500_000_000, PlatformSlug: "unknownplatform"},
 	}
-	scored := ScoreResults(results, "Game", "")
+	scored := ScoreResults(results, "Game", "", RegionPreferences{})
 	// 500MB is in default range
 	if scored[0].ScoreBreakdown.SizeScore != 15 {
 		t.Errorf("unknown platform SizeScore=%d, want 15", scored[0].ScoreBreakdown.SizeScore)

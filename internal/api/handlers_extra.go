@@ -330,7 +330,11 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		},
 		"gamevault_url": s.cfg.GameVaultURL,
 		"romm_url":      s.cfg.RomMURL,
-		"version":       Version,
+		"preferences": map[string]interface{}{
+			"regions":   s.cfg.PreferredRegions,
+			"languages": s.cfg.PreferredLanguages,
+		},
+		"version": Version,
 	})
 }
 

@@ -500,7 +500,8 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Apply search scoring
-	results = search.ScoreResults(results, query, platformFilter)
+	prefs := search.NewRegionPreferences(s.cfg.PreferredRegions, s.cfg.PreferredLanguages)
+	results = search.ScoreResults(results, query, platformFilter, prefs)
 
 	// Apply quality profile source ranking boost
 	for _, r := range results {
@@ -508,7 +509,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		r.Score += boost
 	}
 
-	search.SortByScore(results)
+	search.SortByScore(results, prefs)
 
 	// Cross-reference with library for duplicate detection
 	libraryMap := s.mgr.Jobs().GetAllLibraryTitles()

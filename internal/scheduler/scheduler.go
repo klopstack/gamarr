@@ -178,7 +178,8 @@ func (s *Scheduler) run() {
 			continue
 		}
 
-		search.SortByScore(results)
+		prefs := search.NewRegionPreferences(s.cfg.PreferredRegions, s.cfg.PreferredLanguages)
+		search.SortByScore(results, prefs)
 
 		totalResults += len(results)
 

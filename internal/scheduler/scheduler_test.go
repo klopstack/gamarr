@@ -562,3 +562,42 @@ func TestRunSkipsDownloadDegradedSource(t *testing.T) {
 		t.Errorf("wishlist has %d items, want the item kept for a later run", len(items))
 	}
 }
+
+func TestRunPrefersConfiguredRegion(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	if _, err := store.AddWishlistItem("Super Mario World", "SNES", "snes"); err != nil {
+		t.Fatalf("AddWishlistItem: %v", err)
+	}
+
+	var downloaded *models.SearchResult
+	downloadFn := func(r *models.SearchResult) (string, error) {
+		downloaded = r
+		return "job-region", nil
+	}
+
+	cfg := &config.Config{
+		SchedulerEnabled:      true,
+		SchedulerAutoDownload: true,
+		SchedulerMinScore:     70,
+		PreferredRegions:      []string{"USA", "Europe"},
+	}
+	searchFn := func(q, p string) []*models.SearchResult {
+		results := []*models.SearchResult{
+			{Title: "Super Mario World (Europe).zip", Platform: "SNES", PlatformSlug: "snes", Score: 80, Indexer: "Minerva", SourceType: "torrent", SafetyScore: 95},
+			{Title: "Super Mario World (USA).zip", Platform: "SNES", PlatformSlug: "snes", Score: 80, Indexer: "Minerva", SourceType: "torrent", SafetyScore: 95},
+		}
+		return search.ScoreResults(results, q, p, search.NewRegionPreferences(cfg.PreferredRegions, nil))
+	}
+
+	s := New(cfg, store, searchFn, downloadFn, nil)
+	s.run()
+
+	if downloaded == nil {
+		t.Fatal("downloadFn was not called")
+	}
+	if downloaded.Title != "Super Mario World (USA).zip" {
+		t.Fatalf("downloaded %q, want USA dump", downloaded.Title)
+	}
+}

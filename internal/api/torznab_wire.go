@@ -68,5 +68,6 @@ func (s *Server) searchForTorznab(ctx context.Context, query, platformSlug strin
 	if merged == nil {
 		return []*models.SearchResult{}
 	}
-	return search.ScoreResults(merged, query, platformSlug)
+	prefs := search.NewRegionPreferences(s.cfg.PreferredRegions, s.cfg.PreferredLanguages)
+	return search.ScoreResults(merged, query, platformSlug, prefs)
 }
