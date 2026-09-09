@@ -672,6 +672,33 @@ func TestSetFilePriority(t *testing.T) {
 	}
 }
 
+func TestRenameTorrent(t *testing.T) {
+	var gotHash, gotName string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v2/auth/login" {
+			w.Write([]byte("Ok."))
+			return
+		}
+		if r.URL.Path == "/api/v2/torrents/rename" {
+			r.ParseForm()
+			gotHash = r.Form.Get("hash")
+			gotName = r.Form.Get("name")
+			w.WriteHeader(200)
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "admin", "pass")
+	if !c.RenameTorrent("abc", "Super Nintendo") {
+		t.Fatal("RenameTorrent failed")
+	}
+	if gotHash != "abc" || gotName != "Super Nintendo" {
+		t.Fatalf("got hash=%q name=%q", gotHash, gotName)
+	}
+}
+
 func TestStartTorrent_FallsBackToResume(t *testing.T) {
 	var paths []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

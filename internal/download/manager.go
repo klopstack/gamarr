@@ -221,6 +221,7 @@ func (m *Manager) DownloadTorrent(url, infoHash, title, platf, platSlug string, 
 			}
 		}
 		if selectFiles && clientUsed == "qBittorrent" && hash != "" {
+			m.maybeRenameArchiveTorrent(hash, platf, platSlug)
 			m.jobs.Update(jobID, "detail", "Selecting files in archive torrent...")
 			if err := m.selectArchiveFiles(hash, title, jobID); err != nil {
 				slog.Warn("archive file selection failed", "title", title, "hash", hash, "error", err)
@@ -305,6 +306,53 @@ func (m *Manager) selectArchiveFiles(hash, title, jobID string) error {
 	}
 	slog.Info("archive file selection applied", "hash", hash, "title", title, "keep", len(keep), "skip", len(skip))
 	return nil
+}
+
+func archiveTorrentDisplayName(platf, platSlug string) string {
+	if n := strings.TrimSpace(platf); n != "" {
+		return n
+	}
+	if s := strings.TrimSpace(platSlug); s != "" {
+		return s
+	}
+	return "Minerva Archive"
+}
+
+func isGenericArchiveTorrentName(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "minerva_myrient", "minerva myrient":
+		return true
+	default:
+		return false
+	}
+}
+
+// maybeRenameArchiveTorrent replaces the generic Minerva magnet name with the
+// platform label so qBittorrent lists one archive per console, not "Minerva_Myrient".
+func (m *Manager) maybeRenameArchiveTorrent(hash, platf, platSlug string) {
+	if m.qb == nil || hash == "" {
+		return
+	}
+	want := archiveTorrentDisplayName(platf, platSlug)
+	torrents, err := m.qb.GetTorrents(m.cfg.QBCategory)
+	if err != nil {
+		return
+	}
+	for _, t := range torrents {
+		if !strings.EqualFold(t.Hash, hash) {
+			continue
+		}
+		if strings.EqualFold(t.Name, want) {
+			return
+		}
+		if !isGenericArchiveTorrentName(t.Name) {
+			return
+		}
+		if m.qb.RenameTorrent(hash, want) {
+			slog.Info("archive torrent renamed", "hash", hash, "from", t.Name, "to", want)
+		}
+		return
+	}
 }
 
 func (m *Manager) waitTorrentFiles(hash string) []qbit.TorrentFile {
@@ -1967,6 +2015,25 @@ func (m *Manager) dismissArchiveShellJobs(hash, torrentName string) {
 	}
 }
 
+func (m *Manager) archivePlatformForHash(hash string) (platf, platSlug string) {
+	for _, item := range m.jobs.Items() {
+		ih, _ := item.Data["info_hash"].(string)
+		if !strings.EqualFold(ih, hash) {
+			continue
+		}
+		title, _ := item.Data["title"].(string)
+		if title == "" || strings.EqualFold(title, "Minerva_Myrient") {
+			continue
+		}
+		p, _ := item.Data["platform"].(string)
+		s, _ := item.Data["platform_slug"].(string)
+		if strings.TrimSpace(p) != "" || strings.TrimSpace(s) != "" {
+			return p, s
+		}
+	}
+	return "", ""
+}
+
 // RecoverOrphanedTorrents checks for existing game torrents and re-links them.
 func (m *Manager) RecoverOrphanedTorrents() {
 	if !m.cfg.HasQBittorrent() {
@@ -2013,6 +2080,10 @@ func (m *Manager) RecoverOrphanedTorrents() {
 
 	for _, t := range torrents {
 		m.dismissArchiveShellJobs(t.Hash, t.Name)
+		if isGenericArchiveTorrentName(t.Name) {
+			platf, platSlug := m.archivePlatformForHash(t.Hash)
+			m.maybeRenameArchiveTorrent(t.Hash, platf, platSlug)
+		}
 		// Reuse the row already tracking this torrent. Recovery is not a
 		// once-per-install routine, so minting an id per pass accumulated a
 		// duplicate row per torrent every time it ran.

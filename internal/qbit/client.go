@@ -275,6 +275,27 @@ func (c *Client) SetFilePriority(hash string, indexes []int, priority int) bool 
 	return true
 }
 
+// RenameTorrent sets the display name of a torrent in qBittorrent.
+func (c *Client) RenameTorrent(hash, name string) bool {
+	if hash == "" || strings.TrimSpace(name) == "" {
+		return true
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.ensureAuth()
+
+	data := url.Values{
+		"hash": {hash},
+		"name": {name},
+	}
+	status := c.postWithReauth("/api/v2/torrents/rename", data)
+	if !is2xx(status) {
+		slog.Warn("qBittorrent rename failed", "hash", hash, "name", name, "status", status)
+		return false
+	}
+	return true
+}
+
 // StartTorrent resumes a stopped/paused torrent.
 func (c *Client) StartTorrent(hash string) bool {
 	c.mu.Lock()
