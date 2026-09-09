@@ -6,6 +6,36 @@
 
 ---
 
+## Execution status (2026-09-08)
+
+| Step | Result |
+|------|--------|
+| Rebase `dev` onto `upstream/main` | **Done** — resolved README + scheduler conflicts; skipped/dropped upstream-duplicated qBit API-key commits; `vimm.go` matches upstream (0 diff) |
+| `go test ./...` on rebased `dev` | **PASS** |
+| Force-push `origin/dev` | **Done** — `ef67a03` |
+| PR branches pushed | **8/8** — see table below |
+| Upstream PRs opened | **8/8** — [#48–#55](https://github.com/JeremiahM37/gamarr/pulls) |
+
+### Branch SHAs (origin)
+
+| Merge order | Branch | SHA | Upstream PR |
+|-------------|--------|-----|-------------|
+| 1 | `fix/job-invariants-recovery` | `8dbc5d6` | [#48](https://github.com/JeremiahM37/gamarr/pull/48) |
+| 2 | `feat/qbit-archive-ops` | `70ae190` | [#49](https://github.com/JeremiahM37/gamarr/pull/49) |
+| 3 | `feat/minerva-search` | `c332cd4` | [#50](https://github.com/JeremiahM37/gamarr/pull/50) |
+| 4 | `feat/minerva-archive-download` | `1cd276f` | [#52](https://github.com/JeremiahM37/gamarr/pull/52) |
+| 5 | `feat/minerva-per-rom-import` | `0c01829` | [#53](https://github.com/JeremiahM37/gamarr/pull/53) |
+| 6 | `feat/archive-downloads-ui` | `569c878` | [#54](https://github.com/JeremiahM37/gamarr/pull/54) |
+| 7 | `fix/minerva-job-lifecycle` | `e354968` | [#55](https://github.com/JeremiahM37/gamarr/pull/55) |
+| 8 | `fix/sabnzbd-inprocess-nzb` | `8690dab` | [#51](https://github.com/JeremiahM37/gamarr/pull/51) |
+
+**Notes:**
+- PR branches 3–7 include minimal Minerva source/search wiring so they compile standalone against `upstream/main` (manager references `Sources.Minerva`).
+- PR #55 (`fix/minerva-job-lifecycle`) is the integration branch — nearly full `dev` delta minus SAB (PR #51).
+- Homelab pin (`klopstack/gamarr#dev`) now tracks rebased history; no homelab-casc changes made.
+
+---
+
 ## Executive summary
 
 The `dev` branch is **8 commits** (1 squash-merge of `fix/archive-ui-polish` + 7 fix commits) with **8 uncommitted files** (+322/−32 lines). There is **no merge base** with `upstream/main` — histories diverged when `dev` was created from a standalone merge. Before opening PRs, **rebase `dev` onto latest `upstream/main`** and resolve conflicts (expect heavy overlap in `manager.go`, `vimm.go`, `nzb.go`, `db.go`, `app.js`).
