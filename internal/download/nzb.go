@@ -433,7 +433,7 @@ func (m *Manager) RetryJob(jobID string) (bool, string) {
 	if !found {
 		return false, "The download client no longer holds this torrent"
 	}
-	if torrent.Progress < 1.0 {
+	if !JobDownloadComplete(torrent, m.qb.GetTorrentFiles(torrent.Hash), strVal(job, "title")) {
 		return false, "That download has not finished yet"
 	}
 

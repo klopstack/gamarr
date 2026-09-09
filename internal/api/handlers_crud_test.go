@@ -1319,6 +1319,10 @@ func TestDownloadsGroupsArchiveJobsByHash(t *testing.T) {
 	if entry["title"] != "Minerva_Myrient" {
 		t.Errorf("title = %v", entry["title"])
 	}
+	// Wanted files only: (0.5*100 + 0.25*300) / 400 = 31.2, not the torrent's 30.
+	if p, _ := entry["progress"].(float64); p != 31.2 {
+		t.Errorf("archive progress = %v, want 31.2 (selected files, not torrent total)", p)
+	}
 	files, _ := entry["files"].([]interface{})
 	if len(files) != 2 {
 		t.Fatalf("files = %d, want 2 (shell job excluded)", len(files))
@@ -1328,5 +1332,43 @@ func TestDownloadsGroupsArchiveJobsByHash(t *testing.T) {
 		if f["title"] == "Minerva_Myrient" {
 			t.Fatal("shell job leaked into archive file list")
 		}
+	}
+}
+
+func TestDownloadsUsesFileProgressForSingleArchiveJob(t *testing.T) {
+	const hash = "ae3e64f1d5ff936fe5027a14216453101a0ddbfa"
+
+	qb := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/auth/login"):
+			w.Write([]byte("Ok."))
+		case strings.Contains(r.URL.Path, "/torrents/files"):
+			json.NewEncoder(w).Encode([]map[string]interface{}{
+				{"name": "Wii/Super Paper Mario (USA).zip", "size": 100, "progress": 1.0, "priority": 1, "index": 0},
+				{"name": "Wii/Other Game (USA).zip", "size": 900, "progress": 0, "priority": 0, "index": 1},
+			})
+		default:
+			json.NewEncoder(w).Encode([]map[string]interface{}{{
+				"name": "Minerva_Myrient", "hash": hash, "progress": 0.1,
+				"state": "stalledDL", "total_size": 9_000_000_000, "dlspeed": 0, "eta": 8640000,
+			}})
+		}
+	}))
+	defer qb.Close()
+
+	env := newTestEnv(t, func(c *config.Config) { c.QBURL = qb.URL })
+	env.jobs.Set("job-a", map[string]interface{}{
+		"status": "downloading", "title": "Super Paper Mario (USA).zip", "platform": "Wii", "info_hash": hash,
+	})
+
+	rr := env.do("GET", "/api/downloads", "")
+	wantStatus(t, rr, 200)
+	downloads, _ := decodeMap(t, rr)["downloads"].([]interface{})
+	if len(downloads) != 1 {
+		t.Fatalf("downloads = %d, want 1", len(downloads))
+	}
+	entry, _ := downloads[0].(map[string]interface{})
+	if p, _ := entry["progress"].(float64); p != 100 {
+		t.Errorf("progress = %v, want 100 (the selected file, not the torrent's 10)", p)
 	}
 }
