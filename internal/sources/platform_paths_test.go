@@ -31,7 +31,8 @@ func TestPlatformPathList_UnmarshalJSON(t *testing.T) {
 func TestMinervaSpec_ResolveSlug(t *testing.T) {
 	m := MinervaSpec{
 		PlatformPaths: map[string]PlatformPathList{
-			"ngc": {"Redump/Nintendo - GameCube/"},
+			"ngc":  {"Redump/Nintendo - GameCube/"},
+			"mame": {"MAME/ROMs (merged)/"},
 			"c64": {
 				"No-Intro/Commodore - Commodore 64/",
 				"No-Intro/Commodore - Commodore 64 (Tapes)/",
@@ -39,6 +40,7 @@ func TestMinervaSpec_ResolveSlug(t *testing.T) {
 		},
 		PlatformAliases: map[string]string{
 			"gamecube": "ngc",
+			"arcade":   "mame",
 		},
 	}
 
@@ -47,6 +49,9 @@ func TestMinervaSpec_ResolveSlug(t *testing.T) {
 	}
 	if canon, paths, ok := m.ResolveSlug("gamecube"); !ok || canon != "ngc" || paths.Primary() != "Redump/Nintendo - GameCube/" {
 		t.Errorf("alias gamecube = %q %v %v", canon, paths, ok)
+	}
+	if canon, paths, ok := m.ResolveSlug("arcade"); !ok || canon != "mame" || paths.Primary() != "MAME/ROMs (merged)/" {
+		t.Errorf("alias arcade = %q %v %v", canon, paths, ok)
 	}
 	if _, _, ok := m.ResolveSlug("pc"); ok {
 		t.Error("unknown slug should not resolve")

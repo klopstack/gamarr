@@ -28,7 +28,8 @@
     "base_url": "https://minerva-archive.org/",
     "platform_aliases": {
       "gamecube":  "ngc",
-      "dreamcast": "dc"
+      "dreamcast": "dc",
+      "arcade":    "mame"
     },
     "platform_paths": {
       "gba":       "No-Intro/Nintendo - Game Boy Advance/",
@@ -81,6 +82,7 @@
       "astrocade": "No-Intro/Bally - Astrocade/",
       "arcadia":   "No-Intro/Emerson - Arcadia 2001/",
       "gp32":      "No-Intro/GamePark - GP32/",
+      "mame":      "MAME/ROMs (merged)/",
       "c64": [
         "No-Intro/Commodore - Commodore 64/",
         "No-Intro/Commodore - Commodore 64 (Tapes)/"

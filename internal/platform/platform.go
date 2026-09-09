@@ -74,6 +74,7 @@ var ExtraPlatforms = []ExtraPlatform{
 	{"wonderswan", "WonderSwan"},
 	{"wonderswan-color", "WonderSwan Color"},
 	{"3do", "3DO"},
+	{"mame", "MAME"},
 }
 
 // AllGameCategories returns all Prowlarr category IDs.

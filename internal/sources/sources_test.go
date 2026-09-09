@@ -42,6 +42,9 @@ func TestDefault_EmbeddedRegistryIsComplete(t *testing.T) {
 	if r.Minerva.PlatformAliases["gamecube"] != "ngc" {
 		t.Errorf("Minerva.PlatformAliases[gamecube] = %q", r.Minerva.PlatformAliases["gamecube"])
 	}
+	if r.Minerva.PlatformPaths["mame"].Primary() != "MAME/ROMs (merged)/" {
+		t.Errorf("Minerva.PlatformPaths[mame] = %q", r.Minerva.PlatformPaths["mame"].Primary())
+	}
 }
 
 func TestLoad(t *testing.T) {
