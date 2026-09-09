@@ -72,7 +72,7 @@ func (s *JobStore) loadAll() {
 	}
 	defer rows.Close()
 
-	var staleIDs []string
+	var staleIDs, normalizedIDs []string
 	for rows.Next() {
 		var jobID, dataStr string
 		if err := rows.Scan(&jobID, &dataStr); err != nil {
@@ -86,18 +86,17 @@ func (s *JobStore) loadAll() {
 			data["status"] = "interrupted"
 			data["error"] = "Interrupted by restart"
 			staleIDs = append(staleIDs, jobID)
+		} else if normalizeJobInvariants(data) {
+			normalizedIDs = append(normalizedIDs, jobID)
 		}
-		normalizeJobInvariants(data)
 		s.cache[jobID] = data
 	}
 	// Persist so cleanup, Clear, and the next boot see the same status the UI does.
-	// loadAll used to rewrite only the cache, which left the row as "downloading"
-	// in SQLite and made every restart re-stamp the same jobs.
-	for _, id := range staleIDs {
+	for _, id := range append(staleIDs, normalizedIDs...) {
 		s.persist(id, copyJob(s.cache[id]))
 	}
 	if len(s.cache) > 0 {
-		slog.Info("restored jobs", "count", len(s.cache), "interrupted", len(staleIDs))
+		slog.Info("restored jobs", "count", len(s.cache), "interrupted", len(staleIDs), "normalized", len(normalizedIDs))
 	}
 }
 
@@ -167,11 +166,17 @@ func jobStatusErrorLike(status string) bool {
 // normalizeJobInvariants enforces row shape the UI assumes. Any status that is
 // not an error state must not retain a stale error string from an earlier
 // failure — callers should not have to remember to clear it on recovery.
-func normalizeJobInvariants(data map[string]interface{}) {
+// The bool reports whether error was cleared.
+func normalizeJobInvariants(data map[string]interface{}) bool {
 	status, _ := data["status"].(string)
-	if !jobStatusErrorLike(status) {
-		data["error"] = nil
+	if jobStatusErrorLike(status) {
+		return false
 	}
+	if data["error"] != nil {
+		data["error"] = nil
+		return true
+	}
+	return false
 }
 
 // Set stores or updates a job. The input map is copied, so later caller
