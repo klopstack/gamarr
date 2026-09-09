@@ -7,6 +7,29 @@ import (
 	"gamarr/internal/qbit"
 )
 
+func TestJobFileReadyArchiveMember(t *testing.T) {
+	cfg := newTestConfig(t)
+	jobs := newTestJobs(t)
+	qm := newQbitMock(t)
+	cfg.QBURL = qm.srv.URL
+	m := New(cfg, jobs, qm.client())
+
+	hash := "wii-hash"
+	qm.setFiles([]qbit.TorrentFile{
+		{Name: "Minerva_Myrient/Redump/Wii/Animal Crossing.zip", Priority: 1, Progress: 1.0, Index: 0},
+		{Name: "Minerva_Myrient/Redump/Wii/Other.zip", Priority: 0, Progress: 0.5, Index: 1},
+	})
+	tor := qbit.Torrent{Name: "Wii", Hash: hash, Progress: 0.78}
+	job := map[string]interface{}{"title": "Animal Crossing.zip"}
+	if !m.jobFileReady(job, tor) {
+		t.Fatal("selected archive file at 100% should be ready")
+	}
+	job = map[string]interface{}{"title": "Other.zip"}
+	if m.jobFileReady(job, tor) {
+		t.Fatal("deselected/incomplete file should not be ready")
+	}
+}
+
 func TestJobCompletedClearsError(t *testing.T) {
 	fields := jobCompleted("Moved to RomM (Game Boy)")
 	if fields["status"] != "completed" || fields["detail"] != "Moved to RomM (Game Boy)" {

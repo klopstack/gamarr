@@ -585,6 +585,25 @@ func (m *Manager) torrentWantedComplete(t *qbit.Torrent) bool {
 	return t.Progress >= 1.0 || t.State == "stoppedUP"
 }
 
+// jobFileReady reports whether this job's content is ready to import. Minerva
+// archive magnets can finish one ROM while the torrent as a whole is still
+// downloading.
+func (m *Manager) jobFileReady(job map[string]interface{}, torrent qbit.Torrent) bool {
+	title := strVal(job, "title")
+	if title == "" || strings.EqualFold(title, torrent.Name) || isGenericArchiveTorrentName(title) {
+		return torrent.Progress >= 1.0 || torrent.State == "stoppedUP"
+	}
+	files := m.qb.GetTorrentFiles(torrent.Hash)
+	if len(files) <= 1 {
+		return torrent.Progress >= 1.0 || torrent.State == "stoppedUP"
+	}
+	f, ok := TorrentFileForTitle(files, title)
+	if !ok {
+		return false
+	}
+	return f.Progress >= 1.0
+}
+
 // importArchiveHashJobs imports every active ROM job bound to this torrent hash.
 // Minerva archive magnets share one hash; each job title names a single zip.
 func (m *Manager) importArchiveHashJobs(t qbit.Torrent, triggerJobID, defaultPlatf, defaultPlatSlug string, defaultPC bool) {
