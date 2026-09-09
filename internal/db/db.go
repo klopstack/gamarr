@@ -87,6 +87,7 @@ func (s *JobStore) loadAll() {
 			data["error"] = "Interrupted by restart"
 			staleIDs = append(staleIDs, jobID)
 		}
+		normalizeJobInvariants(data)
 		s.cache[jobID] = data
 	}
 	// Persist so cleanup, Clear, and the next boot see the same status the UI does.
@@ -154,12 +155,32 @@ func copyJob(data map[string]interface{}) map[string]interface{} {
 	return cp
 }
 
+func jobStatusErrorLike(status string) bool {
+	switch status {
+	case "error", "interrupted", "dead_letter":
+		return true
+	default:
+		return false
+	}
+}
+
+// normalizeJobInvariants enforces row shape the UI assumes. Any status that is
+// not an error state must not retain a stale error string from an earlier
+// failure — callers should not have to remember to clear it on recovery.
+func normalizeJobInvariants(data map[string]interface{}) {
+	status, _ := data["status"].(string)
+	if !jobStatusErrorLike(status) {
+		data["error"] = nil
+	}
+}
+
 // Set stores or updates a job. The input map is copied, so later caller
 // mutations do not affect the store.
 func (s *JobStore) Set(jobID string, data map[string]interface{}) {
 	s.mu.Lock()
-	s.cache[jobID] = copyJob(data)
 	snap := copyJob(data)
+	normalizeJobInvariants(snap)
+	s.cache[jobID] = copyJob(snap)
 	s.mu.Unlock()
 	s.persist(jobID, snap)
 }
@@ -186,6 +207,8 @@ func (s *JobStore) Update(jobID, key string, value interface{}) {
 	}
 	job[key] = value
 	snap := copyJob(job)
+	normalizeJobInvariants(snap)
+	s.cache[jobID] = copyJob(snap)
 	s.mu.Unlock()
 	s.persist(jobID, snap)
 }
@@ -202,6 +225,8 @@ func (s *JobStore) UpdateMulti(jobID string, fields map[string]interface{}) {
 		job[k] = v
 	}
 	snap := copyJob(job)
+	normalizeJobInvariants(snap)
+	s.cache[jobID] = copyJob(snap)
 	s.mu.Unlock()
 	s.persist(jobID, snap)
 }

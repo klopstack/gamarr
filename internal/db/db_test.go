@@ -244,6 +244,45 @@ func TestJobStore_ConcurrentReadersAndWriters(t *testing.T) {
 	}
 }
 
+func TestJobStore_ClearsStaleErrorOnRecovery(t *testing.T) {
+	store := newTestStore(t)
+	store.Set("job", map[string]interface{}{
+		"status": "error",
+		"error":  "Cannot read the downloaded files",
+		"title":  "Some Game",
+	})
+
+	store.UpdateMulti("job", map[string]interface{}{
+		"status": "organizing",
+		"detail": "Retry #1",
+	})
+	got, _ := store.Get("job")
+	if got["error"] != nil {
+		t.Errorf("error = %#v after organizing, want nil", got["error"])
+	}
+
+	store.UpdateMulti("job", map[string]interface{}{
+		"status": "error",
+		"error":  "new failure",
+	})
+	store.Update("job", "status", "downloading")
+	got, _ = store.Get("job")
+	if got["error"] != nil {
+		t.Errorf("error = %#v after back to downloading, want nil", got["error"])
+	}
+
+	// Set with a stale error on a completed row is normalized too.
+	store.Set("stale", map[string]interface{}{
+		"status": "completed",
+		"error":  "Interrupted by restart",
+		"detail": "Moved to RomM",
+	})
+	got, _ = store.Get("stale")
+	if got["error"] != nil {
+		t.Errorf("Set completed with stale error: error = %#v, want nil", got["error"])
+	}
+}
+
 func TestJobStore_Persistence(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")

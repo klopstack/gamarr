@@ -119,13 +119,10 @@ func newJobID() string {
 }
 
 // jobCompleted returns the fields written when an import finishes successfully.
-// error is cleared so a stale "Interrupted by restart" from boot does not linger
-// under a completed status in the UI.
 func jobCompleted(detail string) map[string]interface{} {
 	return map[string]interface{}{
 		"status": "completed",
 		"detail": detail,
-		"error":  nil,
 	}
 }
 
