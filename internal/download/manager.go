@@ -118,6 +118,17 @@ func newJobID() string {
 	return fmt.Sprintf("%x", b)
 }
 
+// jobCompleted returns the fields written when an import finishes successfully.
+// error is cleared so a stale "Interrupted by restart" from boot does not linger
+// under a completed status in the UI.
+func jobCompleted(detail string) map[string]interface{} {
+	return map[string]interface{}{
+		"status": "completed",
+		"detail": detail,
+		"error":  nil,
+	}
+}
+
 // DownloadTorrent starts a torrent download.
 // Tries clients in order: qBittorrent -> Transmission -> Deluge (first available).
 // When selectFiles is true (Minerva archive magnets), the torrent is added
@@ -1011,9 +1022,7 @@ func (m *Manager) organizeGame(jobID string, torrent *qbit.Torrent, platf, platS
 			m.jobs.UpdateMulti(jobID, row)
 			return transient
 		}
-		m.jobs.UpdateMulti(jobID, map[string]interface{}{
-			"status": "completed", "detail": importDetail(mode, "GameVault"),
-		})
+		m.jobs.UpdateMulti(jobID, jobCompleted(importDetail(mode, "GameVault")))
 		// The set describes the archive only: a plain folder import writes no
 		// tar, so recording wanted paths beside one would be fiction.
 		if archived && wanted != nil {
@@ -1062,9 +1071,7 @@ func (m *Manager) organizeGame(jobID string, torrent *qbit.Torrent, platf, platS
 			m.jobs.UpdateMulti(jobID, row)
 			return transient
 		}
-		m.jobs.UpdateMulti(jobID, map[string]interface{}{
-			"status": "completed", "detail": importDetail(mode, fmt.Sprintf("RomM (%s)", platf)),
-		})
+		m.jobs.UpdateMulti(jobID, jobCompleted(importDetail(mode, fmt.Sprintf("RomM (%s)", platf))))
 		writeMetadataSidecar(dest, importName, platf, platSlug, isPC, "torrent")
 		m.TrackInLibrary(importName, platf, platSlug, isPC, dest, 0, "torrent", "prowlarr", "torrent:"+torrentHash)
 		m.jobs.LogActivity("download_completed", importName, fmt.Sprintf("Organized to %s", platf), jobID, nil)
@@ -1073,9 +1080,7 @@ func (m *Manager) organizeGame(jobID string, torrent *qbit.Torrent, platf, platS
 		// Experimental: extract archives
 		m.maybeExtractArchives(jobID, dest)
 	} else {
-		m.jobs.UpdateMulti(jobID, map[string]interface{}{
-			"status": "completed", "detail": "Downloaded (unknown platform, left in staging)",
-		})
+		m.jobs.UpdateMulti(jobID, jobCompleted("Downloaded (unknown platform, left in staging)"))
 		slog.Warn("no platform slug, left in downloads", "name", torrentName)
 		return false // Don't delete torrent
 	}
@@ -2164,9 +2169,7 @@ func (m *Manager) organizeDDLFile(jobID, fp, title, platf, platSlug string, isPC
 			})
 			return
 		}
-		m.jobs.UpdateMulti(jobID, map[string]interface{}{
-			"status": "completed", "detail": "Moved to GameVault",
-		})
+		m.jobs.UpdateMulti(jobID, jobCompleted("Moved to GameVault"))
 		writeMetadataSidecar(dest, title, platf, platSlug, isPC, "ddl")
 		m.TrackInLibrary(title, platf, platSlug, isPC, dest, 0, "ddl", "ddl", "ddl:"+dest)
 		m.jobs.LogActivity("download_completed", title, "DDL to GameVault", jobID, nil)
@@ -2181,9 +2184,7 @@ func (m *Manager) organizeDDLFile(jobID, fp, title, platf, platSlug string, isPC
 			})
 			return
 		}
-		m.jobs.UpdateMulti(jobID, map[string]interface{}{
-			"status": "completed", "detail": fmt.Sprintf("Moved to RomM (%s)", platf),
-		})
+		m.jobs.UpdateMulti(jobID, jobCompleted(fmt.Sprintf("Moved to RomM (%s)", platf)))
 		writeMetadataSidecar(dest, title, platf, platSlug, isPC, "ddl")
 		m.TrackInLibrary(title, platf, platSlug, isPC, dest, 0, "ddl", "ddl", "ddl:"+dest)
 		m.jobs.LogActivity("download_completed", title, fmt.Sprintf("DDL to %s", platf), jobID, nil)
@@ -2191,9 +2192,7 @@ func (m *Manager) organizeDDLFile(jobID, fp, title, platf, platSlug string, isPC
 		m.maybeExtractArchives(jobID, dest)
 	} else {
 		slog.Warn("no platform detected, left in staging", "title", sanitizeLog(title), "path", sanitizeLog(fp))
-		m.jobs.UpdateMulti(jobID, map[string]interface{}{
-			"status": "completed", "detail": "Downloaded (unknown platform, left in staging)",
-		})
+		m.jobs.UpdateMulti(jobID, jobCompleted("Downloaded (unknown platform, left in staging)"))
 	}
 }
 

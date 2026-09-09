@@ -7,6 +7,16 @@ import (
 	"gamarr/internal/qbit"
 )
 
+func TestJobCompletedClearsError(t *testing.T) {
+	fields := jobCompleted("Moved to RomM (Game Boy)")
+	if fields["status"] != "completed" || fields["detail"] != "Moved to RomM (Game Boy)" {
+		t.Fatalf("unexpected fields: %#v", fields)
+	}
+	if fields["error"] != nil {
+		t.Fatalf("error = %#v, want nil", fields["error"])
+	}
+}
+
 func TestResolveImportContentPathArchiveMember(t *testing.T) {
 	cfg := newTestConfig(t)
 	jobs := newTestJobs(t)
