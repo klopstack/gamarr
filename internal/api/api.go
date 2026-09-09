@@ -732,10 +732,10 @@ func (s *Server) handleDownloads(w http.ResponseWriter, r *http.Request) {
 			downloads = append(downloads, buildArchiveEntry(s, tor, hashJobs, statusMap, progress, speed))
 		case len(hashJobs) == 1:
 			matchedJobIDs[hashJobs[0].ID] = true
-			downloads = append(downloads, buildMergedJobEntry(hashJobs[0], tor, statusMap, progress, speed))
+			downloads = append(downloads, buildMergedJobEntry(s, hashJobs[0], tor, statusMap, progress, speed))
 		case titleJob != nil:
 			matchedJobIDs[titleJob.ID] = true
-			downloads = append(downloads, buildMergedJobEntry(*titleJob, tor, statusMap, progress, speed))
+			downloads = append(downloads, buildMergedJobEntry(s, *titleJob, tor, statusMap, progress, speed))
 		default:
 			status := tor.State
 			if mapped, ok := statusMap[tor.State]; ok {
@@ -808,7 +808,7 @@ func (s *Server) handleDownloads(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]interface{}{"downloads": downloads})
 }
 
-func buildMergedJobEntry(matchedJob struct {
+func buildMergedJobEntry(s *Server, matchedJob struct {
 	ID   string
 	Data map[string]interface{}
 }, tor qbit.Torrent, statusMap map[string]string, progress float64, speed string) models.DownloadEntry {
@@ -823,6 +823,16 @@ func buildMergedJobEntry(matchedJob struct {
 	errMsg, _ := matchedJob.Data["error"].(string)
 	detail, _ := matchedJob.Data["detail"].(string)
 	infoHash, _ := matchedJob.Data["info_hash"].(string)
+	size := search.HumanSize(tor.TotalSize)
+	if s != nil && s.cfg.HasQBittorrent() {
+		files := s.mgr.QB().GetTorrentFiles(tor.Hash)
+		if f, ok := download.TorrentFileForTitle(files, jTitle(matchedJob.Data)); ok {
+			progress = download.DisplayProgress(f.Progress)
+			size = search.HumanSize(f.Size)
+		} else if p, ok := download.WantedProgress(files); ok {
+			progress = p
+		}
+	}
 	return models.DownloadEntry{
 		Type:     "job",
 		Title:    jTitle(matchedJob.Data),
@@ -832,7 +842,7 @@ func buildMergedJobEntry(matchedJob struct {
 		Error:    errMsg,
 		Detail:   detail,
 		Progress: progress,
-		Size:     search.HumanSize(tor.TotalSize),
+		Size:     size,
 		Speed:    speed,
 		ETA:      tor.ETA,
 		Hash:     tor.Hash,
@@ -881,8 +891,15 @@ func buildArchiveEntry(s *Server, tor qbit.Torrent, hashJobs []struct {
 			InfoHash: infoHash,
 		}
 	}
+	if p, ok := download.WantedProgress(filesList); ok {
+		progress = p
+	}
 	if len(files) == 1 {
 		j := files[0]
+		p := progress
+		if j.Size != "" {
+			p = j.Progress
+		}
 		return models.DownloadEntry{
 			Type:     "job",
 			Title:    j.Title,
@@ -891,7 +908,7 @@ func buildArchiveEntry(s *Server, tor qbit.Torrent, hashJobs []struct {
 			JobID:    j.JobID,
 			Error:    j.Error,
 			Detail:   j.Detail,
-			Progress: progress,
+			Progress: p,
 			Size:     firstNonEmpty(j.Size, search.HumanSize(tor.TotalSize)),
 			Speed:    speed,
 			ETA:      tor.ETA,
@@ -966,19 +983,7 @@ func buildArchiveEntryFromJobs(hashJobs []struct {
 }
 
 func isArchiveShellTitle(jobTitle, torrentName string) bool {
-	title := strings.TrimSpace(jobTitle)
-	if title == "" {
-		return true
-	}
-	if torrentName != "" && strings.EqualFold(title, torrentName) {
-		return true
-	}
-	// Known Minerva archive display names.
-	switch strings.ToLower(title) {
-	case "minerva_myrient", "minerva myrient", "archive download":
-		return true
-	}
-	return false
+	return download.ArchiveShellTitle(jobTitle, torrentName)
 }
 
 func firstNonEmpty(vals ...string) string {

@@ -78,7 +78,7 @@ func (w *Watcher) checkCompleted() {
 	}
 
 	for _, t := range torrents {
-		if t.Progress < 1.0 {
+		if !TorrentDownloadComplete(t, w.mgr.QB().GetTorrentFiles(t.Hash)) {
 			continue
 		}
 

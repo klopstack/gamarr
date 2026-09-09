@@ -98,6 +98,27 @@ func TestWatcherCheckCompletedSkips(t *testing.T) {
 		}
 	})
 
+	t.Run("wanted files done despite partial torrent progress", func(t *testing.T) {
+		qm := newQbitMock(t)
+		w, m := newTestWatcher(t, qm)
+		content := filepath.Join(t.TempDir(), "Pack")
+		writeFileT(t, filepath.Join(content, "setup.exe"), []byte("x"))
+		qm.setFiles([]qbit.TorrentFile{
+			{Name: "Pack/setup.exe", Size: 10, Progress: 1.0, Priority: 1, Index: 0},
+			{Name: "Pack/skip.bin", Size: 90, Progress: 0, Priority: 0, Index: 1},
+		})
+		qm.setTorrents([]qbit.Torrent{{
+			Name: "Pack", Hash: "pack-1", Progress: 0.1, ContentPath: content,
+		}})
+		w.checkCompleted()
+		waitFor(t, minPollTimeout, "wanted-complete pack imported", func() bool {
+			return pathExists(filepath.Join(w.cfg.GamesVaultPath, "Pack", "setup.exe"))
+		})
+		if n := len(m.Jobs().Items()); n == 0 {
+			t.Error("wanted-complete torrent created no job")
+		}
+	})
+
 	t.Run("already imported hash skipped", func(t *testing.T) {
 		qm := newQbitMock(t)
 		w, m := newTestWatcher(t, qm)

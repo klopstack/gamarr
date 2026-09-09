@@ -359,30 +359,11 @@ func stripFileExt(name string) string {
 
 // TorrentFileForTitle returns the torrent file whose basename matches title.
 func TorrentFileForTitle(files []qbit.TorrentFile, title string) (qbit.TorrentFile, bool) {
-	idxs := matchTorrentFileIndexes(files, title)
-	if len(idxs) == 0 {
+	got := torrentFilesForTitle(files, title)
+	if len(got) == 0 {
 		return qbit.TorrentFile{}, false
 	}
-	want := idxs[0]
-	usePos := len(files) > 1
-	if usePos {
-		for _, f := range files {
-			if f.Index != 0 {
-				usePos = false
-				break
-			}
-		}
-	}
-	for i, f := range files {
-		idx := f.Index
-		if usePos {
-			idx = i
-		}
-		if idx == want {
-			return f, true
-		}
-	}
-	return qbit.TorrentFile{}, false
+	return got[0], true
 }
 
 // hashesInCategory snapshots the hashes the client already holds. A nil result
@@ -474,7 +455,7 @@ func (m *Manager) OrganizeTorrent(hash, platf, platSlug string, isPC bool) (stri
 	if torrent == nil {
 		return "", fmt.Errorf("torrent not found")
 	}
-	if torrent.Progress < 1.0 {
+	if !TorrentDownloadComplete(*torrent, m.qb.GetTorrentFiles(torrent.Hash)) {
 		return "", fmt.Errorf("torrent not yet complete")
 	}
 
@@ -530,8 +511,10 @@ func (m *Manager) watchGameTorrent(jobID, infoHash, title, platf, platSlug strin
 				continue
 			}
 
+			files := m.qb.GetTorrentFiles(t.Hash)
+
 			// Layer 1: scan file list once metadata is available
-			if m.cfg.FileListScanEnabled && !fileScanDone && t.Progress > 0 {
+			if m.cfg.FileListScanEnabled && !fileScanDone && (t.Progress > 0 || len(files) > 0) {
 				m.jobs.Update(jobID, "detail", "Scanning file list...")
 				isSafe, issues := safety.ScanTorrentFileList(m.qb, t.Hash)
 				fileScanDone = true
@@ -555,9 +538,42 @@ func (m *Manager) watchGameTorrent(jobID, infoHash, title, platf, platSlug strin
 				m.jobs.Update(jobID, "detail", "File list clean. Downloading...")
 			}
 
-			// Wait for completion
-			if t.Progress >= 1.0 || t.State == "stoppedUP" {
-				m.importFinishedTorrent("job watch", jobID, t, platf, platSlug, isPC)
+			// One watcher per hash, so a later Minerva title on the same
+			// magnet is picked up here rather than starting a rival loop.
+			waiting := false
+			originSeen := false
+			for _, item := range m.jobsOnTorrent(jobID, t) {
+				if item.ID == jobID {
+					originSeen = true
+				}
+				status, _ := item.Data["status"].(string)
+				if !jobStatusActive(status) {
+					continue
+				}
+				itemTitle, _ := item.Data["title"].(string)
+				if itemTitle == "" {
+					itemTitle = title
+				}
+				if item.ID != jobID && ArchiveShellTitle(itemTitle, t.Name) {
+					continue
+				}
+				if !JobDownloadComplete(t, files, itemTitle) {
+					waiting = true
+					continue
+				}
+				p, s, pc := jobPlatform(item.Data, platf, platSlug, isPC)
+				m.importFinishedTorrent("job watch", item.ID, t, p, s, pc)
+			}
+			if !originSeen {
+				// The origin row is not in the store (a test, or it was
+				// deleted). Keep watching the torrent itself.
+				if !JobDownloadComplete(t, files, title) {
+					waiting = true
+				} else {
+					m.importFinishedTorrent("job watch", jobID, t, platf, platSlug, isPC)
+				}
+			}
+			if !waiting {
 				return
 			}
 		}
@@ -567,6 +583,52 @@ func (m *Manager) watchGameTorrent(jobID, infoHash, title, platf, platSlug strin
 		"status": "error",
 		"error":  "Timed out waiting for download",
 	})
+}
+
+func (m *Manager) jobsOnTorrent(originID string, t qbit.Torrent) []struct {
+	ID   string
+	Data map[string]interface{}
+} {
+	var out []struct {
+		ID   string
+		Data map[string]interface{}
+	}
+	seen := map[string]bool{}
+	for _, item := range m.jobs.Items() {
+		ih, _ := item.Data["info_hash"].(string)
+		jt, _ := item.Data["title"].(string)
+		if item.ID != originID && !JobMatchesTorrent(ih, jt, t.Hash, t.Name) {
+			continue
+		}
+		if seen[item.ID] {
+			continue
+		}
+		seen[item.ID] = true
+		out = append(out, item)
+	}
+	return out
+}
+
+func jobPlatform(data map[string]interface{}, platf, platSlug string, isPC bool) (string, string, bool) {
+	if v, _ := data["platform"].(string); v != "" {
+		platf = v
+	}
+	if v, _ := data["platform_slug"].(string); v != "" {
+		platSlug = v
+	}
+	if v, ok := data["is_pc"].(bool); ok {
+		isPC = v
+	}
+	return platf, platSlug, isPC
+}
+
+func (m *Manager) jobTitle(jobID, fallback string) string {
+	if job, ok := m.jobs.Get(jobID); ok {
+		if t, _ := job["title"].(string); t != "" {
+			return t
+		}
+	}
+	return fallback
 }
 
 // resolvePlatform runs the detection cascade over finished content and records
@@ -721,6 +783,7 @@ func (m *Manager) organizeGame(jobID string, torrent *qbit.Torrent, platf, platS
 		return missing
 	}
 
+	jobTitle := m.jobTitle(jobID, torrentName)
 	platf, platSlug, isPC = m.resolvePlatform(jobID, contentPath, torrentName, platf, platSlug, isPC)
 
 	// DetectConsoleROM above is the first guard on this boundary and is narrow
@@ -731,7 +794,7 @@ func (m *Manager) organizeGame(jobID string, torrent *qbit.Torrent, platf, platS
 	// form that can reach both arms.
 	var importMode fileops.Mode
 	if isPC {
-		wanted, selectionKnown := m.wantedFiles(torrent)
+		wanted, selectionKnown := m.wantedFilesNamed(torrent, jobTitle)
 		dest, mode, archived, err := m.importToVault(contentPath, wanted, selectionKnown)
 		importMode = mode
 		if err != nil {
@@ -770,10 +833,21 @@ func (m *Manager) organizeGame(jobID string, torrent *qbit.Torrent, platf, platS
 		// component so it cannot climb out of the ROM library root.
 		destDir := filepath.Join(m.cfg.GamesRomsPath, sanitizeFilename(platSlug))
 		os.MkdirAll(destDir, 0755)
+		src := contentPath
 		dest := filepath.Join(destDir, sanitizeFilename(filepath.Base(contentPath)))
+		label := torrentName
+		var files []qbit.TorrentFile
+		if torrent.Hash != "" && m.qb != nil {
+			files = m.qb.GetTorrentFiles(torrent.Hash)
+		}
+		if paths := jobSourcePaths(contentPath, files, jobTitle); len(paths) == 1 {
+			src = paths[0]
+			dest = filepath.Join(destDir, sanitizeFilename(filepath.Base(src)))
+			label = jobTitle
+		}
 		defer lockDest(dest)()
 		destExisted := destPresent(dest)
-		mode, err := m.importContent(contentPath, dest)
+		mode, err := m.importContent(src, dest)
 		importMode = mode
 		if err != nil {
 			// Evaluated once and reused: the tree can vanish between two live
@@ -803,10 +877,10 @@ func (m *Manager) organizeGame(jobID string, torrent *qbit.Torrent, platf, platS
 		m.jobs.UpdateMulti(jobID, map[string]interface{}{
 			"status": "completed", "detail": importDetail(mode, fmt.Sprintf("RomM (%s)", platf)),
 		})
-		writeMetadataSidecar(dest, torrentName, platf, platSlug, isPC, "torrent")
-		m.TrackInLibrary(torrentName, platf, platSlug, isPC, dest, 0, "torrent", "prowlarr", "torrent:"+torrentHash)
-		m.jobs.LogActivity("download_completed", torrentName, fmt.Sprintf("Organized to %s", platf), jobID, nil)
-		slog.Info("ROM organized", "name", sanitizeLog(torrentName), "dest", sanitizeLog(dest))
+		writeMetadataSidecar(dest, label, platf, platSlug, isPC, "torrent")
+		m.TrackInLibrary(label, platf, platSlug, isPC, dest, 0, "torrent", "prowlarr", "torrent:"+torrentHash)
+		m.jobs.LogActivity("download_completed", label, fmt.Sprintf("Organized to %s", platf), jobID, nil)
+		slog.Info("ROM organized", "name", sanitizeLog(label), "dest", sanitizeLog(dest))
 
 		// Experimental: extract archives
 		m.maybeExtractArchives(jobID, dest)
@@ -818,7 +892,7 @@ func (m *Manager) organizeGame(jobID string, torrent *qbit.Torrent, platf, platS
 		return false // Don't delete torrent
 	}
 
-	m.finishTorrent(torrentHash, torrentName, importMode)
+	m.finishTorrent(torrentHash, torrentName, importMode, jobID)
 	return false
 }
 
@@ -925,46 +999,32 @@ func (m *Manager) archivedImportMode(dest, src string, wanted fileops.WantedFile
 // are indistinguishable from real content without the priorities, so what
 // lands in the archive is a guess, and nothing may drop the source on it.
 func (m *Manager) wantedFiles(torrent *qbit.Torrent) (fileops.WantedFiles, bool) {
+	return m.wantedFilesNamed(torrent, "")
+}
+
+func (m *Manager) wantedFilesNamed(torrent *qbit.Torrent, title string) (fileops.WantedFiles, bool) {
 	if torrent.Hash == "" {
 		return nil, true
 	}
-	files := m.qb.GetTorrentFiles(torrent.Hash)
-	if len(files) == 0 {
+	all := m.qb.GetTorrentFiles(torrent.Hash)
+	if len(all) == 0 {
 		slog.Error("torrent file list unavailable, importing without a selection",
 			"hash", torrent.Hash, "name", sanitizeLog(torrent.Name))
 		return nil, false
 	}
-	// Multi-file torrents root every name at one folder, but that folder is
-	// the .torrent's internal name, which a magnet's display name - what the
-	// API reports as the torrent's name - need not match. Derive the root
-	// from the list itself; falling back to either name would drop subtrees.
-	root := ""
-	for _, f := range files {
-		first, _, found := strings.Cut(f.Name, "/")
-		if !found {
-			root = ""
-			break
-		}
-		if root == "" {
-			root = first + "/"
-		} else if first+"/" != root {
-			root = ""
-			break
-		}
+	// A job title that names files inside the torrent is that job's payload.
+	// Other priority>0 files belong to sibling jobs and must not ride along —
+	// they may still be downloading, and the archive would then refuse.
+	files := all
+	if matched := torrentFilesForTitle(all, title); len(matched) > 0 {
+		files = matched
 	}
 	wanted := fileops.WantedFiles{}
 	for _, f := range files {
 		if f.Priority <= 0 {
 			continue
 		}
-		rel := f.Name
-		if root != "" {
-			rel = strings.TrimPrefix(f.Name, root)
-		}
-		if rel == "" {
-			rel = filepath.Base(f.Name)
-		}
-		wanted[rel] = f.Size
+		wanted[torrentRelPath(all, f)] = f.Size
 	}
 	if len(wanted) == 0 {
 		// Every file deselected. Nothing was asked for, so nothing is missing.
@@ -1006,7 +1066,11 @@ func acceptOccupiedVault(base, src string, wanted fileops.WantedFiles) (dest str
 // torrent is still seedable — removing it (or its files) would throw away the
 // ratio the user imported this way to keep, so it is left alone unless
 // REMOVE_TORRENT_AFTER_IMPORT asks otherwise, and even then the files stay.
-func (m *Manager) finishTorrent(hash, name string, mode fileops.Mode) {
+func (m *Manager) finishTorrent(hash, name string, mode fileops.Mode, exceptJobID string) {
+	if m.torrentHasActiveJobs(hash, exceptJobID) {
+		slog.Info("torrent kept: other jobs still need it", "name", sanitizeLog(name), "hash", hash)
+		return
+	}
 	if !mode.PreservesSource() {
 		m.qb.DeleteTorrent(hash, true)
 		return
@@ -1017,6 +1081,26 @@ func (m *Manager) finishTorrent(hash, name string, mode fileops.Mode) {
 		return
 	}
 	slog.Info("torrent left seeding after import", "name", sanitizeLog(name), "mode", string(mode))
+}
+
+func (m *Manager) torrentHasActiveJobs(hash, exceptJobID string) bool {
+	if hash == "" {
+		return false
+	}
+	for _, item := range m.jobs.Items() {
+		if item.ID == exceptJobID {
+			continue
+		}
+		ih, _ := item.Data["info_hash"].(string)
+		if !strings.EqualFold(ih, hash) {
+			continue
+		}
+		status, _ := item.Data["status"].(string)
+		if jobStatusActive(status) {
+			return true
+		}
+	}
+	return false
 }
 
 // importDetail describes a finished import for the job feed, so the UI does
@@ -1068,6 +1152,10 @@ func (m *Manager) importFinishedTorrent(via, jobID string, t qbit.Torrent, platf
 	claim := t.Hash
 	if claim == "" {
 		claim = jobID
+	} else if title := m.jobTitle(jobID, t.Name); title != "" && !strings.EqualFold(title, t.Name) {
+		// Two ROM jobs share a hash and import different files. Claiming the
+		// hash alone would error the second the moment the first started.
+		claim = t.Hash + ":" + jobID
 	}
 	if _, busy := m.importing.LoadOrStore(claim, struct{}{}); busy {
 		slog.Warn("an import is already running for this download", "via", via, "name", sanitizeLog(t.Name))
@@ -2059,7 +2147,7 @@ func (m *Manager) RecoverOrphanedTorrents() {
 			}
 		}
 
-		if t.Progress >= 1.0 {
+		if TorrentDownloadComplete(t, m.qb.GetTorrentFiles(t.Hash)) {
 			m.jobs.Set(jobID, map[string]interface{}{
 				"status":        "completed_unorganized",
 				"title":         t.Name,
