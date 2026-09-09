@@ -323,8 +323,13 @@ func TestOrganizeGameArchiveMemberLandsInSlugNotTree(t *testing.T) {
 	}
 }
 
-func TestOrganizeGameRefusesArchiveTreeImport(t *testing.T) {
+func TestOrganizeGameArchiveTreeFlattensBySlug(t *testing.T) {
 	cfg := newTestConfig(t)
+	reg, err := sources.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Sources = reg
 	jobs := newTestJobs(t)
 	qm := newQbitMock(t)
 	m := New(cfg, jobs, qm.client())
@@ -335,19 +340,59 @@ func TestOrganizeGameRefusesArchiveTreeImport(t *testing.T) {
 
 	jobID := "job-tree"
 	jobs.Set(jobID, map[string]interface{}{
-		"status": "organizing", "title": "Minerva_Myrient",
-		"platform": "PC", "platform_slug": "pc", "is_pc": true,
+		"status": "organizing", "title": "Minerva Archive",
+		"platform": "Unknown", "platform_slug": "", "is_pc": false,
 	})
-	tor := qbit.Torrent{Name: "Minerva_Myrient", Hash: "tree", ContentPath: root}
-	retry := m.organizeGame(jobID, &tor, "PC", "pc", true, 1)
-	if !retry {
-		t.Fatal("archive tree miss should be retryable so a later per-ROM path can land")
+	tor := qbit.Torrent{Name: "Minerva Archive", Hash: "tree", ContentPath: root}
+	if m.organizeGame(jobID, &tor, "Unknown", "", false, 1) {
+		t.Fatal("flatten import should not retry")
+	}
+	if !pathExists(filepath.Join(cfg.GamesRomsPath, "gb", "Trip World (Europe).zip")) {
+		t.Fatal("GB ROM not flattened")
+	}
+	if !pathExists(filepath.Join(cfg.GamesRomsPath, "xbox", "Halo (USA).zip")) {
+		t.Fatal("Xbox ROM not flattened")
 	}
 	if pathExists(filepath.Join(cfg.GamesRomsPath, "Minerva_Myrient")) ||
 		pathExists(filepath.Join(cfg.GamesVaultPath, "Minerva_Myrient")) ||
-		pathExists(filepath.Join(cfg.GamesRomsPath, "pc", "Minerva_Myrient")) ||
-		pathExists(filepath.Join(cfg.GamesRomsPath, "gb", "Minerva_Myrient")) {
+		pathExists(filepath.Join(cfg.GamesRomsPath, "pc", "Minerva_Myrient")) {
 		t.Fatal("imported archive tree as a library folder")
+	}
+	job, _ := jobs.Get(jobID)
+	if status, _ := job["status"].(string); status != "completed" {
+		t.Fatalf("status = %q, want completed", status)
+	}
+}
+
+func TestOrganizeGameFlattensC64PPCollection(t *testing.T) {
+	cfg := newTestConfig(t)
+	reg, err := sources.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Sources = reg
+	jobs := newTestJobs(t)
+	qm := newQbitMock(t)
+	m := New(cfg, jobs, qm.client())
+
+	root := filepath.Join(t.TempDir(), "C64")
+	writeFileT(t, filepath.Join(root, "No-Intro", "Commodore - Commodore 64 (PP)", "Turrican (USA).zip"), []byte("c64"))
+	writeFileT(t, filepath.Join(root, "No-Intro", "Commodore - VIC-20", "Omega Race (USA).zip"), []byte("vic"))
+
+	jobID := "job-c64"
+	jobs.Set(jobID, map[string]interface{}{
+		"status": "organizing", "title": "Minerva Archive",
+		"platform": "C64", "platform_slug": "c64",
+	})
+	tor := qbit.Torrent{Name: "C64", Hash: "c64", ContentPath: root}
+	if m.organizeGame(jobID, &tor, "C64", "c64", false, 1) {
+		t.Fatal("c64 flatten should not retry")
+	}
+	if !pathExists(filepath.Join(cfg.GamesRomsPath, "c64", "Turrican (USA).zip")) {
+		t.Fatal("C64 (PP) ROM not imported")
+	}
+	if pathExists(filepath.Join(cfg.GamesRomsPath, "vic-20", "Omega Race (USA).zip")) {
+		t.Fatal("filtered slug imported a VIC-20 file")
 	}
 }
 

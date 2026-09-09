@@ -86,6 +86,7 @@
       "mame":      "MAME/ROMs (merged)/",
       "c64": [
         "No-Intro/Commodore - Commodore 64/",
+        "No-Intro/Commodore - Commodore 64 (PP)/",
         "No-Intro/Commodore - Commodore 64 (Tapes)/"
       ],
       "vic-20":   "No-Intro/Commodore - VIC-20/",

@@ -12,6 +12,8 @@ func TestSlugForArchivePath(t *testing.T) {
 		slug string
 	}{
 		{"No-Intro/Commodore - VIC-20/Omega Race (USA).zip", "vic-20"},
+		{"No-Intro/Commodore - Commodore 64 (PP)/Turrican (USA).zip", "c64"},
+		{"No-Intro/Commodore - Commodore 64 (Tapes)/Summer Games (USA).zip", "c64"},
 		{"Minerva_Myrient/No-Intro/Nintendo - Game Boy/Trip World (Europe).zip", "gb"},
 		{"No-Intro/Nintendo - Game Boy Advance/Foo.zip", "gba"},
 		{"No-Intro/Nintendo - Nintendo 64 (BigEndian)/Bar.zip", "n64"},

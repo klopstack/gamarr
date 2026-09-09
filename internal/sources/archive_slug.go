@@ -45,7 +45,7 @@ func normalizeArchiveRel(rel string) string {
 			break
 		}
 		switch strings.ToLower(strings.TrimSpace(first)) {
-		case "minerva_myrient", "minerva myrient":
+		case "minerva_myrient", "minerva myrient", "minerva archive":
 			rel = rest
 			continue
 		}
@@ -60,6 +60,10 @@ func archivePrefixLen(rel, collection string) int {
 		return 0
 	}
 	if rel == c || strings.HasPrefix(rel, c+"/") {
+		return len(c)
+	}
+	// No-Intro dump-type suffixes: "Commodore - Commodore 64 (PP)"
+	if strings.HasPrefix(rel, c+" (") {
 		return len(c)
 	}
 	return 0

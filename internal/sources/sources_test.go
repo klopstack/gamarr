@@ -36,8 +36,8 @@ func TestDefault_EmbeddedRegistryIsComplete(t *testing.T) {
 	if r.Minerva.PlatformPaths["snes"].Primary() != "No-Intro/Nintendo - Super Nintendo Entertainment System/" {
 		t.Errorf("Minerva.PlatformPaths[snes] missing or wrong: %q", r.Minerva.PlatformPaths["snes"].Primary())
 	}
-	if len(r.Minerva.PlatformPaths["c64"]) != 2 {
-		t.Errorf("Minerva.PlatformPaths[c64] want 2 tiers, got %d", len(r.Minerva.PlatformPaths["c64"]))
+	if len(r.Minerva.PlatformPaths["c64"]) != 3 {
+		t.Errorf("Minerva.PlatformPaths[c64] want 3 tiers, got %d", len(r.Minerva.PlatformPaths["c64"]))
 	}
 	if r.Minerva.PlatformAliases["gamecube"] != "ngc" {
 		t.Errorf("Minerva.PlatformAliases[gamecube] = %q", r.Minerva.PlatformAliases["gamecube"])

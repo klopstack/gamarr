@@ -341,7 +341,7 @@ func archiveTorrentDisplayName(platf, platSlug string) string {
 
 func isGenericArchiveTorrentName(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "minerva_myrient", "minerva myrient":
+	case "minerva_myrient", "minerva myrient", "minerva archive":
 		return true
 	default:
 		return false
@@ -820,13 +820,27 @@ func archiveMemberUnderSlug(root, title, platSlug string, reg *sources.Registry)
 		return ""
 	}
 	var cands []string
+	var prefixes []string
 	if _, paths, ok := reg.Minerva.ResolveSlug(platSlug); ok {
-		for _, p := range paths {
-			cands = append(cands, filepath.Join(root, filepath.FromSlash(strings.Trim(p, "/")), base))
-		}
+		prefixes = append(prefixes, paths...)
 	}
 	if p, ok := reg.Myrient.PlatformPaths[platSlug]; ok && p != "" {
-		cands = append(cands, filepath.Join(root, filepath.FromSlash(strings.Trim(p, "/")), base))
+		prefixes = append(prefixes, p)
+	}
+	for _, p := range prefixes {
+		rel := filepath.FromSlash(strings.Trim(p, "/"))
+		cands = append(cands, filepath.Join(root, rel, base))
+		parent := filepath.Join(root, filepath.Dir(rel))
+		stem := filepath.Base(rel)
+		ents, err := os.ReadDir(parent)
+		if err != nil {
+			continue
+		}
+		for _, e := range ents {
+			if e.IsDir() && (e.Name() == stem || strings.HasPrefix(e.Name(), stem+" (")) {
+				cands = append(cands, filepath.Join(parent, e.Name(), base))
+			}
+		}
 	}
 	for _, c := range cands {
 		if _, err := os.Stat(c); err == nil {
@@ -837,6 +851,148 @@ func archiveMemberUnderSlug(root, title, platSlug string, reg *sources.Registry)
 		return cands[0]
 	}
 	return ""
+}
+
+func isROMCollectionDir(path string, reg *sources.Registry) bool {
+	fi, err := os.Stat(path)
+	if err != nil || !fi.IsDir() {
+		return false
+	}
+	_, ok := slugForCollectionDir(path, "", reg)
+	return ok
+}
+
+func slugForCollectionDir(dir, root string, reg *sources.Registry) (string, bool) {
+	if reg == nil {
+		return "", false
+	}
+	var rels []string
+	if root != "" {
+		if r, err := filepath.Rel(root, dir); err == nil && r != "." && !strings.HasPrefix(r, "..") {
+			rels = append(rels, filepath.ToSlash(r))
+		}
+	}
+	parts := strings.Split(filepath.ToSlash(dir), "/")
+	for i, p := range parts {
+		switch p {
+		case "No-Intro", "Redump", "MAME":
+			rels = append(rels, strings.Join(parts[i:], "/"))
+		}
+	}
+	for _, rel := range rels {
+		if slug, ok := reg.SlugForArchivePath(rel); ok {
+			return slug, true
+		}
+		if slug, ok := reg.SlugForArchivePath(rel + "/x.zip"); ok {
+			return slug, true
+		}
+	}
+	return "", false
+}
+
+// organizeArchiveMembers flattens finished collection/archive files into
+// roms/<slug>/<basename>. Used when the operator organizes a completed
+// Minerva set (C64, VIC-20, …) instead of one ROM job.
+func (m *Manager) organizeArchiveMembers(jobID string, torrent *qbit.Torrent, root, platf, platSlug string, attempt int) bool {
+	reg := m.cfg.Sources
+	if reg == nil {
+		def, err := sources.Default()
+		if err != nil {
+			m.jobs.UpdateMulti(jobID, map[string]interface{}{
+				"status": "error", "error": err.Error(),
+			})
+			return false
+		}
+		reg = def
+	}
+	files := m.archiveMemberSources(torrent, root)
+	wantSlug := ""
+	if platSlug != "" && !isGenericArchiveTorrentName(platSlug) &&
+		!strings.EqualFold(platSlug, "unknown") && !strings.EqualFold(platSlug, "pc") {
+		wantSlug = platSlug
+	}
+	imported := 0
+	var lastErr error
+	for _, src := range files {
+		if looksLikeHTMLFile(src) {
+			continue
+		}
+		slug, ok := slugForCollectionDir(filepath.Dir(src), root, reg)
+		if !ok {
+			if mapped, mappedOK := reg.SlugForArchivePath(src); mappedOK {
+				slug, ok = mapped, true
+			}
+		}
+		if !ok {
+			continue
+		}
+		if wantSlug != "" && slug != wantSlug {
+			continue
+		}
+		name := sanitizeFilename(filepath.Base(src))
+		if name == "" || name == "." {
+			continue
+		}
+		destDir := filepath.Join(m.cfg.GamesRomsPath, sanitizeFilename(slug))
+		os.MkdirAll(destDir, 0755)
+		dest := filepath.Join(destDir, name)
+		if destIsExistingFile(dest) {
+			imported++
+			continue
+		}
+		if _, err := m.importContent(src, dest); err != nil {
+			lastErr = err
+			slog.Error("archive member import failed", "src", sanitizeLog(src), "dest", sanitizeLog(dest), "error", err)
+			continue
+		}
+		writeMetadataSidecar(dest, name, platf, slug, false, "torrent")
+		imported++
+	}
+	if imported == 0 {
+		err := "No finished ROM files for this platform were found in the archive"
+		if lastErr != nil {
+			err = lastErr.Error()
+		}
+		missing := importMoved(root) || (lastErr != nil && errors.Is(lastErr, os.ErrNotExist))
+		m.jobs.UpdateMulti(jobID, map[string]interface{}{
+			"status": "error",
+			"error":  err,
+			"detail": err,
+		})
+		return missing || attempt == 1
+	}
+	m.jobs.UpdateMulti(jobID, jobCompleted(fmt.Sprintf("Moved %d ROMs to RomM", imported)))
+	slog.Info("archive members organized", "count", imported, "root", sanitizeLog(root), "job_id", jobID)
+	return false
+}
+
+func (m *Manager) archiveMemberSources(torrent *qbit.Torrent, root string) []string {
+	var out []string
+	if torrent != nil && m.qb != nil && torrent.Hash != "" {
+		for _, f := range m.qb.GetTorrentFiles(torrent.Hash) {
+			if f.Progress < 1 {
+				continue
+			}
+			src := torrentFileContentPath(root, f.Name)
+			if fi, err := os.Stat(src); err == nil && !fi.IsDir() {
+				out = append(out, src)
+			}
+		}
+	}
+	if len(out) > 0 {
+		return out
+	}
+	_ = filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
+		if err != nil || info == nil || info.IsDir() {
+			return nil
+		}
+		if !isROMArchiveExt(filepath.Ext(p)) {
+			return nil
+		}
+		out = append(out, p)
+		return nil
+	})
+	return out
 }
 
 func rommSlugForImport(platSlug, filePath, contentRoot string, reg *sources.Registry) string {
@@ -1157,16 +1313,8 @@ func (m *Manager) organizeGame(jobID string, torrent *qbit.Torrent, platf, platS
 		return missing
 	}
 
-	if isArchiveTree(contentPath) {
-		// The archive root is not a ROM and not a vault game. Importing it
-		// as dest basename Minerva_Myrient copies the whole Myrient tree
-		// into GAMES_ROMS_PATH/<slug>/ (or into the vault when is_pc).
-		m.jobs.UpdateMulti(jobID, map[string]interface{}{
-			"status": "error",
-			"error":  "Refusing to import the Minerva/Myrient archive tree as a library folder; waiting for a single ROM file",
-		})
-		slog.Error("refusing archive tree import", "path", sanitizeLog(contentPath), "job_id", jobID)
-		return true
+	if isArchiveTree(contentPath) || isROMCollectionDir(contentPath, m.cfg.Sources) {
+		return m.organizeArchiveMembers(jobID, torrent, contentPath, platf, platSlug, attempt)
 	}
 	if looksLikeHTMLFile(contentPath) {
 		m.jobs.UpdateMulti(jobID, map[string]interface{}{

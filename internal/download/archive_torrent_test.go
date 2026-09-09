@@ -15,7 +15,7 @@ func TestArchiveTorrentDisplayName(t *testing.T) {
 }
 
 func TestIsGenericArchiveTorrentName(t *testing.T) {
-	for _, name := range []string{"Minerva_Myrient", "minerva myrient", " MINERVA_MYRIENT "} {
+	for _, name := range []string{"Minerva_Myrient", "minerva myrient", " MINERVA_MYRIENT ", "Minerva Archive"} {
 		if !isGenericArchiveTorrentName(name) {
 			t.Fatalf("%q should be generic", name)
 		}
