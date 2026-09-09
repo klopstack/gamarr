@@ -864,6 +864,7 @@ func buildArchiveEntry(s *Server, tor qbit.Torrent, hashJobs []struct {
 		}
 		files = append(files, df)
 	}
+	progress = archiveEntryProgress(files, progress)
 	if len(files) == 0 {
 		status := tor.State
 		if mapped, ok := statusMap[tor.State]; ok {
@@ -963,6 +964,17 @@ func buildArchiveEntryFromJobs(hashJobs []struct {
 		InfoHash: infoHash,
 		Files:    files,
 	}
+}
+
+func archiveEntryProgress(files []models.DownloadFile, fallback float64) float64 {
+	if len(files) == 0 {
+		return fallback
+	}
+	var sum float64
+	for _, f := range files {
+		sum += f.Progress
+	}
+	return float64(int(sum/float64(len(files))*10)) / 10.0
 }
 
 func isArchiveShellTitle(jobTitle, torrentName string) bool {

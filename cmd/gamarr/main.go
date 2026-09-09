@@ -271,6 +271,7 @@ func main() {
 	// Recover orphaned torrents and scan library in background
 	if cfg.HasQBittorrent() {
 		go mgr.RecoverOrphanedTorrents()
+		go mgr.RecoverActiveTorrentJobs()
 	}
 	go mgr.RecoverOrphanedNZBDownloads()
 	go mgr.ScanLibraryDirs()
