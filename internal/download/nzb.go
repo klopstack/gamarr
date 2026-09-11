@@ -48,6 +48,13 @@ func (m *Manager) downloadSABnzbd(sab *sabnzbd.Client, nzbURL, title, platf, pla
 		})
 		return jobID, nil
 	}
+	if strings.TrimSpace(nzoID) == "" {
+		m.jobs.UpdateMulti(jobID, map[string]interface{}{
+			"status": "error",
+			"error":  "SABnzbd error: missing NZO ID in addurl response",
+		})
+		return jobID, nil
+	}
 	m.jobs.UpdateMulti(jobID, map[string]interface{}{
 		"detail": "Downloading via Usenet...",
 		"nzo_id": nzoID,
