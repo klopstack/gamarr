@@ -227,16 +227,21 @@ func main() {
 		}
 		prefs := search.NewRegionPreferences(cfg.PreferredRegions, cfg.PreferredLanguages)
 		results = search.ScoreResults(results, query, platformSlug, prefs)
+		if platformSlug != "" && platformSlug != "all" {
+			for _, r := range results {
+				r.SearchPlatformSlug = platformSlug
+			}
+		}
 		return results
 	}
 
 	downloadFn := func(result *models.SearchResult) (string, error) {
 		if result.SourceType == "ddl" {
-			jobID := mgr.DownloadDDL(result.DownloadURL, result.VimmID, result.Title, result.Platform, result.PlatformSlug, result.IsPC)
+			jobID := mgr.DownloadDDL(result.DownloadURL, result.VimmID, result.Title, result.Platform, result.PlatformSlug, result.SearchPlatformSlug, result.IsPC)
 			return jobID, nil
 		}
 		if result.DownloadProtocol == "nzb" {
-			return mgr.DownloadNZB(sab, result.DownloadURL, result.Title, result.Platform, result.PlatformSlug, result.IsPC)
+			return mgr.DownloadNZB(sab, result.DownloadURL, result.Title, result.Platform, result.PlatformSlug, result.SearchPlatformSlug, result.IsPC)
 		}
 		url := result.DownloadURL
 		if url == "" {
@@ -246,7 +251,7 @@ func main() {
 			url = fmt.Sprintf("magnet:?xt=urn:btih:%s", result.InfoHash)
 		}
 		selectFiles := result.Indexer == "Minerva" || strings.Contains(result.MagnetURL, "Minerva_Myrient")
-		return mgr.DownloadTorrent(url, result.InfoHash, result.Title, result.Platform, result.PlatformSlug, result.IsPC, selectFiles)
+		return mgr.DownloadTorrent(url, result.InfoHash, result.Title, result.Platform, result.PlatformSlug, result.SearchPlatformSlug, result.IsPC, selectFiles)
 	}
 
 	webhookFn := func() []webhook.WebhookConfig {
