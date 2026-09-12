@@ -131,7 +131,7 @@ func jobCompleted(detail string) map[string]interface{} {
 // Tries clients in order: qBittorrent -> Transmission -> Deluge (first available).
 // When selectFiles is true (Minerva archive magnets), the torrent is added
 // paused, matching files are prioritized, and then started.
-func (m *Manager) DownloadTorrent(url, infoHash, title, platf, platSlug string, isPC, selectFiles bool) (string, error) {
+func (m *Manager) DownloadTorrent(url, infoHash, title, platf, platSlug, searchSlug string, isPC, selectFiles bool) (string, error) {
 	if url == "" {
 		return "", fmt.Errorf("no download URL")
 	}
@@ -140,8 +140,9 @@ func (m *Manager) DownloadTorrent(url, infoHash, title, platf, platSlug string, 
 			return existing, nil
 		}
 	}
+	platf, platSlug, isPC = applyQueuePlatform(searchSlug, platf, platSlug, isPC)
 	jobID := newJobID()
-	m.jobs.Set(jobID, map[string]interface{}{
+	job := map[string]interface{}{
 		"status":        "downloading",
 		"title":         title,
 		"info_hash":     infoHash,
@@ -150,7 +151,9 @@ func (m *Manager) DownloadTorrent(url, infoHash, title, platf, platSlug string, 
 		"is_pc":         isPC,
 		"error":         nil,
 		"detail":        "Sending to download client...",
-	})
+	}
+	mergeJobFields(job, searchPlatformJobFields(searchSlug))
+	m.jobs.Set(jobID, job)
 
 	added := false
 	clientUsed := ""
@@ -504,7 +507,8 @@ func (m *Manager) resolveAddedHash(knownBefore map[string]bool, title string) (s
 }
 
 // DownloadDDL starts a direct download.
-func (m *Manager) DownloadDDL(url, vimmID, title, platf, platSlug string, isPC bool) string {
+func (m *Manager) DownloadDDL(url, vimmID, title, platf, platSlug, searchSlug string, isPC bool) string {
+	platf, platSlug, isPC = applyQueuePlatform(searchSlug, platf, platSlug, isPC)
 	jobID := newJobID()
 	job := map[string]interface{}{
 		"status":        "downloading",
@@ -516,6 +520,7 @@ func (m *Manager) DownloadDDL(url, vimmID, title, platf, platSlug string, isPC b
 		"error":         nil,
 		"detail":        "Starting direct download...",
 	}
+	mergeJobFields(job, searchPlatformJobFields(searchSlug))
 	// A Vimm vault ID is stable and sufficient to replay the existing download
 	// path. Keep it on the private job row so retries survive page reloads and
 	// process restarts without exposing it through the downloads response.
@@ -1188,6 +1193,21 @@ func (m *Manager) watchGameTorrent(jobID, infoHash, title, platf, platSlug strin
 // what it finds on the job row. Every import path calls it, so none can drift
 // from the others on what a download turns out to be.
 func (m *Manager) resolvePlatform(jobID, contentPath, title, platf, platSlug string, isPC bool) (string, string, bool) {
+	if job, ok := m.jobs.Get(jobID); ok {
+		searchSlug, _ := job["search_platform_slug"].(string)
+		if searchSlug != "" {
+			np, ns, npc, changed := platform.ApplySearchPlatformFilter(searchSlug, platf, platSlug, isPC)
+			if changed {
+				platf, platSlug, isPC = np, ns, npc
+				m.jobs.UpdateMulti(jobID, map[string]interface{}{
+					"platform": platf, "platform_slug": platSlug, "is_pc": isPC,
+				})
+				slog.Info("applied search platform to import", "platform", platf, "search_slug", searchSlug)
+				return platf, platSlug, isPC
+			}
+		}
+	}
+
 	// Platform detection from metadata
 	if platSlug == "" && !isPC {
 		if info, ok := platform.DetectPlatformFromMetadata(contentPath); ok {

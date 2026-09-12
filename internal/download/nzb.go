@@ -16,19 +16,20 @@ import (
 
 // DownloadNZB starts a Usenet/NZB download. SABnzbd is preferred when both
 // clients are configured to preserve the existing behavior.
-func (m *Manager) DownloadNZB(sab *sabnzbd.Client, nzbURL, title, platf, platSlug string, isPC bool) (string, error) {
+func (m *Manager) DownloadNZB(sab *sabnzbd.Client, nzbURL, title, platf, platSlug, searchSlug string, isPC bool) (string, error) {
 	if sab != nil {
-		return m.downloadSABnzbd(sab, nzbURL, title, platf, platSlug, isPC)
+		return m.downloadSABnzbd(sab, nzbURL, title, platf, platSlug, searchSlug, isPC)
 	}
 	if m.nzbget != nil {
-		return m.downloadNZBGet(m.nzbget, nzbURL, title, platf, platSlug, isPC)
+		return m.downloadNZBGet(m.nzbget, nzbURL, title, platf, platSlug, searchSlug, isPC)
 	}
 	return "", fmt.Errorf("usenet download client not configured")
 }
 
-func (m *Manager) downloadSABnzbd(sab *sabnzbd.Client, nzbURL, title, platf, platSlug string, isPC bool) (string, error) {
+func (m *Manager) downloadSABnzbd(sab *sabnzbd.Client, nzbURL, title, platf, platSlug, searchSlug string, isPC bool) (string, error) {
+	platf, platSlug, isPC = applyQueuePlatform(searchSlug, platf, platSlug, isPC)
 	jobID := newJobID()
-	m.jobs.Set(jobID, map[string]interface{}{
+	job := map[string]interface{}{
 		"status":        "downloading",
 		"title":         title,
 		"platform":      platf,
@@ -38,7 +39,9 @@ func (m *Manager) downloadSABnzbd(sab *sabnzbd.Client, nzbURL, title, platf, pla
 		"detail":        "Sending to SABnzbd...",
 		"source_type":   "nzb",
 		"source_client": "sabnzbd",
-	})
+	}
+	mergeJobFields(job, searchPlatformJobFields(searchSlug))
+	m.jobs.Set(jobID, job)
 	m.jobs.LogActivity("download_started", title, "NZB via SABnzbd", jobID, nil)
 
 	nzoID, err := sab.AddNZBByURL(nzbURL, title, m.cfg.SABnzbdCategory)
@@ -58,9 +61,10 @@ func (m *Manager) downloadSABnzbd(sab *sabnzbd.Client, nzbURL, title, platf, pla
 	return jobID, nil
 }
 
-func (m *Manager) downloadNZBGet(client *nzbget.Client, nzbURL, title, platf, platSlug string, isPC bool) (string, error) {
+func (m *Manager) downloadNZBGet(client *nzbget.Client, nzbURL, title, platf, platSlug, searchSlug string, isPC bool) (string, error) {
+	platf, platSlug, isPC = applyQueuePlatform(searchSlug, platf, platSlug, isPC)
 	jobID := newJobID()
-	m.jobs.Set(jobID, map[string]interface{}{
+	job := map[string]interface{}{
 		"status":        "downloading",
 		"title":         title,
 		"platform":      platf,
@@ -70,7 +74,9 @@ func (m *Manager) downloadNZBGet(client *nzbget.Client, nzbURL, title, platf, pl
 		"detail":        "Sending to NZBGet...",
 		"source_type":   "nzb",
 		"source_client": "nzbget",
-	})
+	}
+	mergeJobFields(job, searchPlatformJobFields(searchSlug))
+	m.jobs.Set(jobID, job)
 	m.jobs.LogActivity("download_started", title, "NZB via NZBGet", jobID, nil)
 
 	nzbID, err := client.AddNZBByURL(nzbURL, title, m.cfg.NZBGetCategory)

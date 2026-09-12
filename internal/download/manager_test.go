@@ -75,7 +75,7 @@ func TestNewManager(t *testing.T) {
 func TestDownloadTorrentValidation(t *testing.T) {
 	cfg := newTestConfig(t)
 	m := New(cfg, newTestJobs(t), nil)
-	if _, err := m.DownloadTorrent("", "", "Title", "PC", "", true, false); err == nil {
+	if _, err := m.DownloadTorrent("", "", "Title", "PC", "", "", true, false); err == nil {
 		t.Fatal("empty URL should return an error")
 	}
 }
@@ -86,7 +86,7 @@ func TestDownloadTorrentNoClientAvailable(t *testing.T) {
 	jobs := newTestJobs(t)
 	m := New(cfg, jobs, nil)
 
-	jobID, err := m.DownloadTorrent("magnet:x", "", "Some Game", "PC", "", true, false)
+	jobID, err := m.DownloadTorrent("magnet:x", "", "Some Game", "PC", "", "", true, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestDownloadTorrentQBitFullFlow(t *testing.T) {
 	}})
 
 	m := New(cfg, jobs, qm.client())
-	jobID, err := m.DownloadTorrent("magnet:x", "", "Super Game (USA)", "SNES", "snes", false, false)
+	jobID, err := m.DownloadTorrent("magnet:x", "", "Super Game (USA)", "SNES", "snes", "", false, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestDownloadTorrentTracksRenamedTorrentByHash(t *testing.T) {
 	}
 
 	m := New(cfg, jobs, qm.client())
-	jobID, err := m.DownloadTorrent("magnet:x", "hash-renamed", title, "SNES", "snes", false, false)
+	jobID, err := m.DownloadTorrent("magnet:x", "hash-renamed", title, "SNES", "snes", "", false, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -210,7 +210,7 @@ func TestDownloadTorrentBlocksDangerousFiles(t *testing.T) {
 	}})
 
 	m := New(cfg, jobs, qm.client())
-	jobID, err := m.DownloadTorrent("magnet:x", "", "Evil Game", "PC", "", true, false)
+	jobID, err := m.DownloadTorrent("magnet:x", "", "Evil Game", "PC", "", "", true, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -251,7 +251,7 @@ func TestDownloadTorrentFallbacks(t *testing.T) {
 		cfg.TransmissionURL = trSrv.URL
 
 		m := New(cfg, jobs, qm.client())
-		jobID, err := m.DownloadTorrent("magnet:x", "", "Fallback Game", "PC", "", true, false)
+		jobID, err := m.DownloadTorrent("magnet:x", "", "Fallback Game", "PC", "", "", true, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -280,7 +280,7 @@ func TestDownloadTorrentFallbacks(t *testing.T) {
 		cfg.DelugeURL = dlSrv.URL
 
 		m := New(cfg, jobs, qm.client())
-		jobID, err := m.DownloadTorrent("magnet:x", "", "Fallback Game 2", "PC", "", true, false)
+		jobID, err := m.DownloadTorrent("magnet:x", "", "Fallback Game 2", "PC", "", "", true, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -302,7 +302,7 @@ func TestDownloadTorrentFallbacks(t *testing.T) {
 		cfg.DelugeURL = deadSrv.URL
 
 		m := New(cfg, jobs, qm.client())
-		jobID, err := m.DownloadTorrent("magnet:x", "", "Doomed Game", "PC", "", true, false)
+		jobID, err := m.DownloadTorrent("magnet:x", "", "Doomed Game", "PC", "", "", true, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -495,7 +495,7 @@ func TestDownloadDDL(t *testing.T) {
 		defer srv.Close()
 
 		m := New(cfg, jobs, nil)
-		jobID := m.DownloadDDL(srv.URL+"/dl", "", "Mario World", "SNES", "snes", false)
+		jobID := m.DownloadDDL(srv.URL+"/dl", "", "Mario World", "SNES", "snes", "", false)
 
 		waitFor(t, 10*time.Second, "library tracking", func() bool {
 			return jobs.LibraryHasSourceID("ddl:" + filepath.Join(cfg.GamesRomsPath, "snes", "Mario World.sfc"))
@@ -523,7 +523,7 @@ func TestDownloadDDL(t *testing.T) {
 		defer srv.Close()
 
 		m := New(cfg, jobs, nil)
-		jobID := m.DownloadDDL(srv.URL+"/gone", "", "Missing Game", "PC", "", true)
+		jobID := m.DownloadDDL(srv.URL+"/gone", "", "Missing Game", "PC", "", "", true)
 		job := waitJobStatus(t, jobs, jobID, "error", 5*time.Second)
 		errMsg, _ := job["error"].(string)
 		if !strings.Contains(errMsg, "Download failed") {
@@ -549,7 +549,7 @@ func TestDownloadDDL(t *testing.T) {
 		defer srv.Close()
 
 		m := New(cfg, jobs, nil)
-		jobID := m.DownloadDDL(srv.URL+"/dl", "", "Blocked Game", "PC", "", true)
+		jobID := m.DownloadDDL(srv.URL+"/dl", "", "Blocked Game", "PC", "", "", true)
 		job := waitJobStatus(t, jobs, jobID, "error", 5*time.Second)
 		errMsg, _ := job["error"].(string)
 		if !strings.Contains(errMsg, "cannot create staging dir") {
@@ -564,7 +564,7 @@ func TestDownloadDDL(t *testing.T) {
 		cfg := newTestConfig(t)
 		jobs := newTestJobs(t)
 		m := New(cfg, jobs, nil)
-		jobID := m.DownloadDDL("", "", "Nothing", "PC", "", true)
+		jobID := m.DownloadDDL("", "", "Nothing", "PC", "", "", true)
 		waitJobStatus(t, jobs, jobID, "error", 5*time.Second)
 	})
 }
@@ -927,11 +927,11 @@ func TestDownloadTorrentDedupsActiveArchiveJob(t *testing.T) {
 	qm.setTorrents([]qbit.Torrent{{Name: "Game Boy", Hash: hash, Progress: 0.2}})
 	m := New(cfg, jobs, qm.client())
 
-	first, err := m.DownloadTorrent("magnet:x", hash, title, "Game Boy", "gb", false, true)
+	first, err := m.DownloadTorrent("magnet:x", hash, title, "Game Boy", "gb", "", false, true)
 	if err != nil {
 		t.Fatalf("first DownloadTorrent: %v", err)
 	}
-	second, err := m.DownloadTorrent("magnet:x", hash, title, "Game Boy", "gb", false, true)
+	second, err := m.DownloadTorrent("magnet:x", hash, title, "Game Boy", "gb", "", false, true)
 	if err != nil {
 		t.Fatalf("second DownloadTorrent: %v", err)
 	}
@@ -1062,7 +1062,7 @@ func TestDownloadTorrentResolvesHashFromClient(t *testing.T) {
 	// A Prowlarr redirect link, which is what gamarr actually receives - there
 	// is no magnet to read the hash out of.
 	jobID, err := m.DownloadTorrent(
-		"http://prowlarr:9696/75/download?link=abc", "", release, "PC", "", true, false)
+		"http://prowlarr:9696/75/download?link=abc", "", release, "PC", "", "", true, false)
 	if err != nil {
 		t.Fatalf("DownloadTorrent: %v", err)
 	}
@@ -1357,7 +1357,7 @@ func TestDownloadTorrentFileListScanDisabled(t *testing.T) {
 	}})
 
 	m := New(cfg, jobs, qm.client())
-	jobID, err := m.DownloadTorrent("magnet:x", "", "Repack Game", "PC", "", true, false)
+	jobID, err := m.DownloadTorrent("magnet:x", "", "Repack Game", "PC", "", "", true, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1402,7 +1402,7 @@ func TestNyaaSwitchROMTaggedPCImportsAsSwitch(t *testing.T) {
 
 	m := New(cfg, jobs, qm.client())
 	// exactly what a 4050-tagged search hit hands the downloader
-	jobID, err := m.DownloadTorrent("magnet:x", "h-switch", "Zelda TOTK", info.Name, info.Slug, info.IsPC, false)
+	jobID, err := m.DownloadTorrent("magnet:x", "h-switch", "Zelda TOTK", info.Name, info.Slug, "", info.IsPC, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1449,7 +1449,7 @@ func TestPCGameTaggedPCGamesImportsToVault(t *testing.T) {
 	}})
 
 	m := New(cfg, jobs, qm.client())
-	jobID, err := m.DownloadTorrent("magnet:x", "h-pc", "Terraria", "PC", "", true, false)
+	jobID, err := m.DownloadTorrent("magnet:x", "h-pc", "Terraria", "PC", "", "", true, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

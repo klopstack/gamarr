@@ -118,7 +118,7 @@ func (s *sabMock) client() *sabnzbd.Client {
 
 func TestDownloadNZBNilClient(t *testing.T) {
 	m := New(newTestConfig(t), newTestJobs(t), nil)
-	_, err := m.DownloadNZB(nil, "http://x/nzb", "Game", "PC", "", true)
+	_, err := m.DownloadNZB(nil, "http://x/nzb", "Game", "PC", "", "", true)
 	if err == nil || !strings.Contains(err.Error(), "not configured") {
 		t.Fatalf("err = %v, want not configured", err)
 	}
@@ -132,7 +132,7 @@ func TestDownloadNZBAddError(t *testing.T) {
 	sab.addError = "invalid api key"
 
 	m := New(cfg, jobs, nil)
-	jobID, err := m.DownloadNZB(sab.client(), nzbSourceURL(t), "Bad Game", "PC", "", true)
+	jobID, err := m.DownloadNZB(sab.client(), nzbSourceURL(t), "Bad Game", "PC", "", "", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestDownloadNZBCompletedFlow(t *testing.T) {
 	}
 
 	m := New(cfg, jobs, nil)
-	jobID, err := m.DownloadNZB(sab.client(), nzbSourceURL(t), "Usenet Game", "SNES", "snes", false)
+	jobID, err := m.DownloadNZB(sab.client(), nzbSourceURL(t), "Usenet Game", "SNES", "snes", "", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -200,7 +200,7 @@ func TestDownloadNZBFailedFlow(t *testing.T) {
 	}
 
 	m := New(cfg, jobs, nil)
-	jobID, err := m.DownloadNZB(sab.client(), nzbSourceURL(t), "Doomed", "PC", "", true)
+	jobID, err := m.DownloadNZB(sab.client(), nzbSourceURL(t), "Doomed", "PC", "", "", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -228,7 +228,7 @@ func TestDownloadNZBGetCompletedFlow(t *testing.T) {
 	cfg.NZBGetCategory = "games"
 
 	m := New(cfg, jobs, nil)
-	jobID, err := m.DownloadNZB(nil, "https://indexer.example/game.nzb", "NZBGet Game", "GBA", "gba", false)
+	jobID, err := m.DownloadNZB(nil, "https://indexer.example/game.nzb", "NZBGet Game", "GBA", "gba", "", false)
 	if err != nil {
 		t.Fatalf("DownloadNZB: %v", err)
 	}
@@ -258,7 +258,7 @@ func TestDownloadNZBGetFailures(t *testing.T) {
 		cfg.NZBGetURL = mock.srv.URL
 
 		m := New(cfg, jobs, nil)
-		jobID, err := m.DownloadNZB(nil, "https://example/game.nzb", "Bad", "PC", "", true)
+		jobID, err := m.DownloadNZB(nil, "https://example/game.nzb", "Bad", "PC", "", "", true)
 		if err != nil {
 			t.Fatalf("DownloadNZB: %v", err)
 		}
@@ -278,7 +278,7 @@ func TestDownloadNZBGetFailures(t *testing.T) {
 		cfg.NZBGetURL = mock.srv.URL
 
 		m := New(cfg, jobs, nil)
-		jobID, err := m.DownloadNZB(nil, "https://example/game.nzb", "Failed", "PC", "", true)
+		jobID, err := m.DownloadNZB(nil, "https://example/game.nzb", "Failed", "PC", "", "", true)
 		if err != nil {
 			t.Fatalf("DownloadNZB: %v", err)
 		}
@@ -480,6 +480,47 @@ func TestOrganizeNZBDownload(t *testing.T) {
 		dest := filepath.Join(m.cfg.GamesRomsPath, "switch", "game.nsp")
 		if !pathExists(dest) {
 			t.Errorf("usenet import did not reclassify a PC-tagged console ROM: %s not written", dest)
+		}
+	})
+
+	t.Run("search platform slug overrides PC indexer tag at queue time", func(t *testing.T) {
+		cfg := newTestConfig(t)
+		jobs := newTestJobs(t)
+		sab := newSabMock(t)
+		m := New(cfg, jobs, nil)
+		jobID, err := m.DownloadNZB(sab.client(), nzbSourceURL(t), "[PSX] Game", "PC", "", "psx", true)
+		if err != nil {
+			t.Fatalf("DownloadNZB: %v", err)
+		}
+		job, ok := jobs.Get(jobID)
+		if !ok {
+			t.Fatal("job missing")
+		}
+		if slug, _ := job["platform_slug"].(string); slug != "psx" {
+			t.Errorf("platform_slug = %q, want psx", slug)
+		}
+		if isPC, _ := job["is_pc"].(bool); isPC {
+			t.Error("is_pc still true after psx search filter")
+		}
+		if ss, _ := job["search_platform_slug"].(string); ss != "psx" {
+			t.Errorf("search_platform_slug = %q, want psx", ss)
+		}
+	})
+
+	t.Run("search platform slug routes a PC-tagged CHD without guessing", func(t *testing.T) {
+		m, jobID := newFixture(t)
+		m.Jobs().Set(jobID, map[string]interface{}{
+			"search_platform_slug": "psx",
+		})
+		storage := filepath.Join(t.TempDir(), "WWF WrestleMania (USA).chd")
+		writeFileT(t, storage, []byte("rom"))
+
+		m.organizeNZBDownloadWithClient(jobID, storage,
+			"Some unrelated title", "PC", "", true, "sabnzbd")
+
+		dest := filepath.Join(m.cfg.GamesRomsPath, "psx", "WWF WrestleMania (USA).chd")
+		if !pathExists(dest) {
+			t.Errorf("search platform did not route CHD to psx: %s missing", dest)
 		}
 	})
 

@@ -311,6 +311,9 @@ func (s *Server) handleDownloadForRequest(w http.ResponseWriter, r *http.Request
 	if body.Title == "" {
 		body.Title = req.Title
 	}
+	if body.SearchPlatformSlug == "" {
+		body.SearchPlatformSlug = req.PlatformSlug
+	}
 
 	// Update request status.
 	req.Status = models.RequestStatusDownloading
@@ -325,7 +328,7 @@ func (s *Server) handleDownloadForRequest(w http.ResponseWriter, r *http.Request
 			return
 		}
 		jobID = s.mgr.DownloadDDL(body.DownloadURL, body.VimmID, body.Title,
-			body.Platform, body.PlatformSlug, body.IsPC)
+			body.Platform, body.PlatformSlug, body.SearchPlatformSlug, body.IsPC)
 	} else if body.DownloadProtocol == "nzb" {
 		if body.DownloadURL == "" {
 			writeError(w, http.StatusBadRequest, "No NZB URL")
@@ -333,7 +336,7 @@ func (s *Server) handleDownloadForRequest(w http.ResponseWriter, r *http.Request
 		}
 		var dlErr error
 		jobID, dlErr = s.mgr.DownloadNZB(s.sab, body.DownloadURL, body.Title,
-			body.Platform, body.PlatformSlug, body.IsPC)
+			body.Platform, body.PlatformSlug, body.SearchPlatformSlug, body.IsPC)
 		if dlErr != nil {
 			writeError(w, http.StatusBadRequest, dlErr.Error())
 			return
@@ -350,7 +353,7 @@ func (s *Server) handleDownloadForRequest(w http.ResponseWriter, r *http.Request
 		var dlErr error
 		selectFiles := body.Indexer == "Minerva" || strings.Contains(body.MagnetURL, "Minerva_Myrient")
 		jobID, dlErr = s.mgr.DownloadTorrent(url, body.InfoHash, body.Title,
-			body.Platform, body.PlatformSlug, body.IsPC, selectFiles)
+			body.Platform, body.PlatformSlug, body.SearchPlatformSlug, body.IsPC, selectFiles)
 		if dlErr != nil {
 			writeError(w, http.StatusBadRequest, dlErr.Error())
 			return

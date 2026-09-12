@@ -47,9 +47,10 @@
           "magnet_url":     {"type": "string"},
           "info_hash":      {"type": "string"},
           "guid":           {"type": "string"},
-          "platform":       {"type": "string"},
-          "platform_slug":  {"type": "string"},
-          "source_type":    {"type": "string", "enum": ["torrent", "ddl"]},
+          "platform":               {"type": "string"},
+          "platform_slug":          {"type": "string"},
+          "search_platform_slug":   {"type": "string", "description": "Platform filter active when this result was searched."},
+          "source_type":            {"type": "string", "enum": ["torrent", "ddl"]},
           "safety_score":   {"type": "integer", "description": "0-100; higher is safer."},
           "score":          {"type": "integer"},
           "in_library":     {"type": "boolean"}

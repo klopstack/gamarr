@@ -109,6 +109,51 @@ func DetectPlatform(categories []interface{}) PlatformInfo {
 	return PlatformInfo{Name: "Unknown"}
 }
 
+// LookupBySlug returns platform info for a RomM slug or "pc".
+func LookupBySlug(slug string) (PlatformInfo, bool) {
+	slug = strings.TrimSpace(strings.ToLower(slug))
+	if slug == "" || slug == "all" {
+		return PlatformInfo{}, false
+	}
+	if slug == "pc" {
+		return PlatformInfo{Name: "PC", Slug: "", IsPC: true}, true
+	}
+	for _, info := range PlatformMap {
+		if info.Slug == slug {
+			return info, true
+		}
+	}
+	for _, ep := range ExtraPlatforms {
+		if ep.Slug == slug {
+			return PlatformInfo{Name: ep.Name, Slug: ep.Slug}, true
+		}
+	}
+	return PlatformInfo{}, false
+}
+
+// ApplySearchPlatformFilter applies the platform the user searched for when
+// indexer categories are ambiguous (e.g. Newznab 4050 PC/Games carrying console
+// ROMs). Returns whether the classification changed.
+func ApplySearchPlatformFilter(searchSlug, platf, platSlug string, isPC bool) (string, string, bool, bool) {
+	searchSlug = strings.TrimSpace(strings.ToLower(searchSlug))
+	if searchSlug == "" || searchSlug == "all" {
+		return platf, platSlug, isPC, false
+	}
+	if searchSlug == "pc" {
+		if isPC || platSlug == "" {
+			return "PC", "", true, true
+		}
+		return platf, platSlug, isPC, false
+	}
+	if !isPC && platSlug != "" {
+		return platf, platSlug, isPC, false
+	}
+	if info, ok := LookupBySlug(searchSlug); ok && !info.IsPC {
+		return info.Name, info.Slug, false, true
+	}
+	return platf, platSlug, isPC, false
+}
+
 // GetCategoriesForPlatform returns all Prowlarr category IDs matching a platform slug.
 func GetCategoriesForPlatform(slug string) []int {
 	switch slug {

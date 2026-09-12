@@ -504,6 +504,12 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	prefs := search.NewRegionPreferences(s.cfg.PreferredRegions, s.cfg.PreferredLanguages)
 	results = search.ScoreResults(results, query, platformFilter, prefs)
 
+	if platformFilter != "" && platformFilter != "all" {
+		for _, r := range results {
+			r.SearchPlatformSlug = platformFilter
+		}
+	}
+
 	// Apply quality profile source ranking boost
 	for _, r := range results {
 		boost := s.mgr.Jobs().SourceRankScore(r.Indexer)
@@ -614,7 +620,7 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 400, "No download URL")
 			return
 		}
-		jobID := s.mgr.DownloadDDL(req.DownloadURL, req.VimmID, req.Title, req.Platform, req.PlatformSlug, req.IsPC)
+		jobID := s.mgr.DownloadDDL(req.DownloadURL, req.VimmID, req.Title, req.Platform, req.PlatformSlug, req.SearchPlatformSlug, req.IsPC)
 		resp := map[string]interface{}{"success": true, "job_id": jobID}
 		if duplicateWarning != "" {
 			resp["warning"] = duplicateWarning
@@ -630,7 +636,7 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 400, "No NZB URL")
 			return
 		}
-		jobID, err := s.mgr.DownloadNZB(s.sab, nzbURL, req.Title, req.Platform, req.PlatformSlug, req.IsPC)
+		jobID, err := s.mgr.DownloadNZB(s.sab, nzbURL, req.Title, req.Platform, req.PlatformSlug, req.SearchPlatformSlug, req.IsPC)
 		if err != nil {
 			writeError(w, 400, err.Error())
 			return
@@ -653,7 +659,7 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	selectFiles := req.Indexer == "Minerva" || strings.Contains(req.MagnetURL, "Minerva_Myrient")
-	jobID, err := s.mgr.DownloadTorrent(url, req.InfoHash, req.Title, req.Platform, req.PlatformSlug, req.IsPC, selectFiles)
+	jobID, err := s.mgr.DownloadTorrent(url, req.InfoHash, req.Title, req.Platform, req.PlatformSlug, req.SearchPlatformSlug, req.IsPC, selectFiles)
 	if err != nil {
 		writeError(w, 400, err.Error())
 		return

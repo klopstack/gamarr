@@ -762,7 +762,7 @@ func TestRetryJobRestartsVimmDownloadOnTheSameRow(t *testing.T) {
 	// discovery's open circuit; a later successful delivery then recovers both
 	// the degraded flag and the circuit itself.
 	search.RecordDownloadFail("vimm", "earlier gate")
-	jobID := m.DownloadDDL("", "4970", "Vimm Retry Fixture", "SNES", "snes", false)
+	jobID := m.DownloadDDL("", "4970", "Vimm Retry Fixture", "SNES", "snes", "", false)
 	failed := waitJobStatus(t, jobs, jobID, "error", minPollTimeout)
 	if failed["vimm_id"] != "4970" || failed["source_type"] != "ddl" {
 		t.Fatalf("job did not retain its replay inputs: %v", failed)

@@ -14,9 +14,10 @@ type SearchResult struct {
 	MagnetURL        string   `json:"magnet_url"`
 	InfoHash         string   `json:"info_hash"`
 	GUID             string   `json:"guid"`
-	Platform         string   `json:"platform"`
-	PlatformSlug     string   `json:"platform_slug"`
-	IsPC             bool     `json:"is_pc"`
+	Platform             string `json:"platform"`
+	PlatformSlug         string `json:"platform_slug"`
+	SearchPlatformSlug   string `json:"search_platform_slug,omitempty"`
+	IsPC                 bool   `json:"is_pc"`
 	Age              int      `json:"age"`
 	SourceType       string   `json:"source_type"`                 // "torrent" or "ddl"
 	DownloadProtocol string   `json:"download_protocol,omitempty"` // "torrent" or "nzb"
@@ -101,11 +102,12 @@ type DownloadRequest struct {
 	DownloadURL      string `json:"download_url"`
 	MagnetURL        string `json:"magnet_url"`
 	InfoHash         string `json:"info_hash"`
-	Title            string `json:"title"`
-	Platform         string `json:"platform"`
-	PlatformSlug     string `json:"platform_slug"`
-	IsPC             bool   `json:"is_pc"`
-	SourceType       string `json:"source_type"`
+	Title              string `json:"title"`
+	Platform           string `json:"platform"`
+	PlatformSlug       string `json:"platform_slug"`
+	SearchPlatformSlug string `json:"search_platform_slug,omitempty"`
+	IsPC               bool   `json:"is_pc"`
+	SourceType         string `json:"source_type"`
 	Indexer          string `json:"indexer"`
 	VimmID           string `json:"vimm_id"`
 	DownloadProtocol string `json:"download_protocol"` // "torrent" or "nzb"

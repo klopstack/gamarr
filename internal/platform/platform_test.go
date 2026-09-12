@@ -367,6 +367,46 @@ func TestConsoleROMExtsExcludePCAmbiguousFormats(t *testing.T) {
 	}
 }
 
+func TestLookupBySlug(t *testing.T) {
+	info, ok := LookupBySlug("psx")
+	if !ok || info.Slug != "psx" {
+		t.Fatalf("LookupBySlug(psx) = %+v, ok=%v", info, ok)
+	}
+	info, ok = LookupBySlug("snes")
+	if !ok || info.Slug != "snes" {
+		t.Fatalf("LookupBySlug(snes) = %+v, ok=%v", info, ok)
+	}
+	info, ok = LookupBySlug("pc")
+	if !ok || !info.IsPC {
+		t.Fatalf("LookupBySlug(pc) = %+v, ok=%v", info, ok)
+	}
+}
+
+func TestApplySearchPlatformFilter(t *testing.T) {
+	tests := []struct {
+		search   string
+		platSlug string
+		isPC     bool
+		wantSlug string
+		wantPC   bool
+		changed  bool
+	}{
+		{"psx", "", true, "psx", false, true},
+		{"switch", "", true, "switch", false, true},
+		{"pc", "", false, "", true, true},
+		{"psx", "psx", false, "psx", false, false},
+		{"all", "", true, "", true, false},
+		{"", "", true, "", true, false},
+	}
+	for _, tt := range tests {
+		_, slug, pc, changed := ApplySearchPlatformFilter(tt.search, "", tt.platSlug, tt.isPC)
+		if slug != tt.wantSlug || pc != tt.wantPC || changed != tt.changed {
+			t.Errorf("search=%q platSlug=%q isPC=%v => slug=%q pc=%v changed=%v, want slug=%q pc=%v changed=%v",
+				tt.search, tt.platSlug, tt.isPC, slug, pc, changed, tt.wantSlug, tt.wantPC, tt.changed)
+		}
+	}
+}
+
 func TestDetectMisclassifiedPCTaggedConsole(t *testing.T) {
 	tests := []struct {
 		name     string
