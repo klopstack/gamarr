@@ -14,7 +14,6 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -28,6 +27,7 @@ import (
 	"gamarr/internal/fileops"
 	"gamarr/internal/flaresolverr"
 	"gamarr/internal/nzbget"
+	"gamarr/internal/organize"
 	"gamarr/internal/platform"
 	"gamarr/internal/qbit"
 	"gamarr/internal/safety"
@@ -805,13 +805,32 @@ func isArchiveTree(path string) bool {
 	if err != nil || !fi.IsDir() {
 		return false
 	}
-	for _, name := range []string{"No-Intro", "Redump", "MAME"} {
-		st, err := os.Stat(filepath.Join(path, name))
-		if err == nil && st.IsDir() {
-			return true
+	return hasArchiveCollectionMarker(path)
+}
+
+func hasArchiveCollectionMarker(root string) bool {
+	found := false
+	_ = filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
+		if err != nil || info == nil || !info.IsDir() {
+			return nil
 		}
-	}
-	return false
+		switch info.Name() {
+		case "No-Intro", "Redump", "MAME":
+			found = true
+			return nil
+		}
+		if found {
+			return nil
+		}
+		if p != root {
+			rel, err := filepath.Rel(root, p)
+			if err != nil || strings.Count(rel, string(os.PathSeparator)) > 3 {
+				return filepath.SkipDir
+			}
+		}
+		return nil
+	})
+	return found
 }
 
 func archiveMemberUnderSlug(root, title, platSlug string, reg *sources.Registry) string {
@@ -985,16 +1004,9 @@ func (m *Manager) archiveMemberSources(torrent *qbit.Torrent, root string) []str
 	if len(out) > 0 {
 		return out
 	}
-	_ = filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
-		if err != nil || info == nil || info.IsDir() {
-			return nil
-		}
-		if !isROMArchiveExt(filepath.Ext(p)) {
-			return nil
-		}
+	for _, p := range organize.CollectROMFiles(root) {
 		out = append(out, p)
-		return nil
-	})
+	}
 	return out
 }
 
@@ -1286,6 +1298,104 @@ func lockDest(path string) func() {
 // keep. Omitting the key leaves "Moving to library..." under a failure.
 const occupiedDetail = "Something is already stored at this destination, so the import was refused."
 
+// importFlattenedROMDirectory imports ROM files from a release folder into
+// roms/{slug}/{basename} instead of preserving the download folder name.
+func (m *Manager) importFlattenedROMDirectory(jobID, contentPath, importName, platf, platSlug, sourceKind, sourceClient, sourceID string, attempt int) (retryable bool, importMode fileops.Mode) {
+	files := organize.CollectROMFiles(contentPath)
+	if len(files) == 0 {
+		retryable := false
+		if _, statErr := os.Stat(contentPath); errors.Is(statErr, os.ErrNotExist) {
+			retryable = true
+		} else if statErr == nil {
+			retryable = attempt == 1
+		}
+		m.jobs.UpdateMulti(jobID, map[string]interface{}{
+			"status": "error",
+			"error":  "No ROM files found in download folder",
+		})
+		return retryable, fileops.ModeMove
+	}
+
+	destDir := filepath.Join(m.cfg.GamesRomsPath, sanitizeFilename(platSlug))
+	os.MkdirAll(destDir, 0755)
+
+	imported := 0
+	var lastDest string
+	var lastErr error
+
+	for _, src := range files {
+		if looksLikeHTMLFile(src) {
+			continue
+		}
+		name := sanitizeFilename(filepath.Base(src))
+		if name == "" || name == "." {
+			continue
+		}
+		dest := filepath.Join(destDir, name)
+		unlock := lockDest(dest)
+		destExisted := destPresent(dest)
+		if destIsExistingFile(dest) {
+			unlock()
+			imported++
+			lastDest = dest
+			continue
+		}
+		mode, err := m.importContent(src, dest)
+		unlock()
+		importMode = mode
+		if err != nil {
+			lastErr = err
+			if !destExisted {
+				removePartialDest(dest)
+			}
+			transient := importTransient(contentPath, err, attempt) || importMoved(src)
+			row := map[string]interface{}{
+				"status": "error", "error": fmt.Sprintf("Organize failed: %v", err),
+			}
+			if errors.Is(err, fileops.ErrDestinationOccupied) {
+				row["detail"] = occupiedDetail
+			} else if !transient {
+				row["detail"] = retryHint
+			}
+			m.jobs.UpdateMulti(jobID, row)
+			return transient, importMode
+		}
+		writeMetadataSidecar(dest, name, platf, platSlug, false, sourceKind)
+		m.TrackInLibrary(name, platf, platSlug, false, dest, 0, sourceKind, sourceClient, sourceID)
+		imported++
+		lastDest = dest
+		if imported == 1 {
+			m.jobs.Update(jobID, "library_path", dest)
+		}
+	}
+
+	if imported == 0 {
+		err := "No ROM files found in download folder"
+		if lastErr != nil {
+			err = lastErr.Error()
+		}
+		m.jobs.UpdateMulti(jobID, map[string]interface{}{
+			"status": "error",
+			"error":  err,
+		})
+		return importMoved(contentPath) || attempt == 1, importMode
+	}
+
+	if importMode == fileops.ModeMove {
+		os.RemoveAll(contentPath)
+	}
+
+	label := fmt.Sprintf("RomM (%s)", platf)
+	if imported > 1 {
+		label = fmt.Sprintf("Moved %d ROMs to RomM (%s)", imported, platf)
+	}
+	m.jobs.UpdateMulti(jobID, jobCompleted(importDetail(importMode, label)))
+	m.jobs.LogActivity("download_completed", importName, label, jobID, nil)
+	slog.Info("ROM directory organized", "name", sanitizeLog(importName), "count", imported, "dest", sanitizeLog(lastDest))
+	m.maybeExtractArchives(jobID, lastDest)
+	return false, importMode
+}
+
 func (m *Manager) organizeGame(jobID string, torrent *qbit.Torrent, platf, platSlug string, isPC bool, attempt int) (retryable bool) {
 	contentPath := m.resolveImportContentPath(jobID, torrent)
 	torrentName := torrent.Name
@@ -1377,6 +1487,13 @@ func (m *Manager) organizeGame(jobID string, torrent *qbit.Torrent, platf, platS
 		m.jobs.LogActivity("download_completed", torrentName, "Organized to GameVault", jobID, nil)
 		slog.Info("PC game organized", "name", sanitizeLog(torrentName), "dest", sanitizeLog(dest))
 	} else if platSlug != "" {
+		if fi, statErr := os.Stat(contentPath); statErr == nil && fi.IsDir() && organize.ShouldFlattenROMDirectory(platSlug) {
+			retryable, mode := m.importFlattenedROMDirectory(jobID, contentPath, importName, platf, platSlug, "torrent", "prowlarr", "torrent:"+torrentHash, attempt)
+			if m.shouldFinishTorrent(torrentHash, torrentName) {
+				m.finishTorrent(torrentHash, torrentName, mode)
+			}
+			return retryable
+		}
 		// platSlug arrives from the download request; keep it a single path
 		// component so it cannot climb out of the ROM library root.
 		destDir := filepath.Join(m.cfg.GamesRomsPath, sanitizeFilename(platSlug))
@@ -2775,7 +2892,7 @@ func (m *Manager) maybeExtractArchives(jobID, dest string) {
 	if !fi.IsDir() {
 		target = filepath.Dir(dest)
 	}
-	extracted := extractArchives(target)
+	extracted := organize.ExtractArchives(target)
 	if len(extracted) > 0 {
 		job, ok := m.jobs.Get(jobID)
 		if ok {
@@ -2786,47 +2903,27 @@ func (m *Manager) maybeExtractArchives(jobID, dest string) {
 	}
 }
 
-func extractArchives(directory string) []string {
-	var extracted []string
-	patterns := []string{"*.rar", "*.RAR", "*.zip", "*.ZIP", "*.7z"}
-	for _, pattern := range patterns {
-		matches, _ := filepath.Glob(filepath.Join(directory, pattern))
-		for _, archive := range matches {
-			extractDir := archive + ".extracted"
-			if pathExists(extractDir) {
-				continue
-			}
-			os.MkdirAll(extractDir, 0755)
-			ext := strings.ToLower(filepath.Ext(archive))
-
-			var cmd *exec.Cmd
-			if ext == ".rar" {
-				cmd = exec.Command("unrar", "x", "-o+", "-y", archive, extractDir+"/")
-			} else {
-				cmd = exec.Command("7z", "x", fmt.Sprintf("-o%s", extractDir), "-y", archive)
-			}
-			if err := cmd.Run(); err != nil {
-				slog.Warn("extraction failed", "archive", sanitizeLog(filepath.Base(archive)), "error", err)
-				os.RemoveAll(extractDir)
-				continue
-			}
-			extracted = append(extracted, archive)
-			slog.Info("extracted archive", "name", sanitizeLog(filepath.Base(archive)))
+// ExtractPoolArchives walks the ROM library (optionally one platform slug)
+// and extracts zip/7z/rar archives in place. Used to remediate imports that
+// landed before EXTRACT_ARCHIVES was enabled.
+func (m *Manager) ExtractPoolArchives(platformSlug string) ([]string, error) {
+	root := m.cfg.GamesRomsPath
+	if platformSlug != "" {
+		if strings.Contains(platformSlug, "..") || strings.ContainsAny(platformSlug, `/\`) {
+			return nil, fmt.Errorf("invalid platform slug")
 		}
+		root = filepath.Join(root, platformSlug)
 	}
-
-	// Recurse into subdirectories
-	entries, _ := os.ReadDir(directory)
-	for _, e := range entries {
-		if e.IsDir() && !strings.HasSuffix(e.Name(), ".extracted") {
-			sub, err := safeChild(directory, e.Name())
-			if err != nil {
-				continue
-			}
-			extracted = append(extracted, extractArchives(sub)...)
-		}
+	fi, err := os.Stat(root)
+	if err != nil {
+		return nil, fmt.Errorf("path not found: %s", root)
 	}
-	return extracted
+	if !fi.IsDir() {
+		return nil, fmt.Errorf("not a directory: %s", root)
+	}
+	extracted := organize.ExtractArchives(root)
+	slog.Info("pool archive extraction finished", "root", root, "count", len(extracted))
+	return extracted, nil
 }
 
 func writeMetadataSidecar(destPath, title, platf, platSlug string, isPC bool, sourceType string, extras ...map[string]interface{}) {
@@ -2925,6 +3022,9 @@ func (m *Manager) LoadSettings() *Settings {
 	if s.VaultArchiveEnabled == nil {
 		archive := m.cfg.VaultArchiveEnabled
 		s.VaultArchiveEnabled = &archive
+	}
+	if m.cfg.ExtractArchives {
+		s.ExtractArchives = true
 	}
 	return &s
 }

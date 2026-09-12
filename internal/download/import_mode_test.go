@@ -31,6 +31,12 @@ func newImportTest(t *testing.T, mode fileops.Mode) (*Manager, *qbitMock, qbit.T
 	return m, qm, torrent
 }
 
+func newROMImportTest(t *testing.T, mode fileops.Mode) (*Manager, *qbitMock, qbit.Torrent) {
+	m, qm, torrent := newImportTest(t, mode)
+	writeFileT(t, filepath.Join(torrent.ContentPath, "game.sfc"), []byte("PAYLOAD"))
+	return m, qm, torrent
+}
+
 func sameInode(t *testing.T, a, b string) bool {
 	t.Helper()
 	fa, err := os.Stat(a)
@@ -145,17 +151,17 @@ func TestOrganizeGameROMImportModes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.mode), func(t *testing.T) {
-			m, qm, torrent := newImportTest(t, tt.mode)
+			m, qm, torrent := newROMImportTest(t, tt.mode)
 			jobID := newJobID()
 			m.Jobs().Set(jobID, map[string]interface{}{"status": "organizing", "title": torrent.Name})
 
 			m.organizeGame(jobID, &torrent, "SNES", "snes", false, 1)
 
-			dest := filepath.Join(m.cfg.GamesRomsPath, "snes", "Seeded Game", "setup.exe")
+			dest := filepath.Join(m.cfg.GamesRomsPath, "snes", "game.sfc")
 			if _, err := os.Stat(dest); err != nil {
 				t.Fatalf("ROM not imported: %v", err)
 			}
-			_, err := os.Stat(filepath.Join(torrent.ContentPath, "setup.exe"))
+			_, err := os.Stat(filepath.Join(torrent.ContentPath, "game.sfc"))
 			if survived := err == nil; survived != tt.wantSrcSurvive {
 				t.Errorf("source survived = %v, want %v", survived, tt.wantSrcSurvive)
 			}

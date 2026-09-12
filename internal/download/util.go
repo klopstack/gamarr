@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"gamarr/internal/organize"
 )
 
 func cryptoReader() io.Reader {
@@ -105,15 +107,7 @@ func isMyrientDirectoryURL(raw string) bool {
 }
 
 func isROMArchiveExt(ext string) bool {
-	switch strings.ToLower(ext) {
-	case ".zip", ".7z", ".rar", ".rvz", ".iso", ".chd", ".wbfs", ".gcz",
-		".cso", ".nsp", ".xci", ".nsz", ".cia", ".nds", ".gba", ".gb", ".gbc",
-		".nes", ".sfc", ".smc", ".n64", ".z64", ".v64", ".cue", ".bin",
-		".pbp", ".wad", ".wux":
-		return true
-	default:
-		return false
-	}
+	return organize.IsROMArchiveExt(ext)
 }
 
 // safeChild joins name onto dir and guarantees the result stays inside dir,

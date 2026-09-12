@@ -54,6 +54,61 @@ func writeZip(t *testing.T, path string, files map[string]string) {
 
 // ── OrganizeGame ─────────────────────────────────────────────────────────────
 
+func TestPreserveROMDirectoryStructure(t *testing.T) {
+	if !PreserveROMDirectoryStructure("dos") || !PreserveROMDirectoryStructure("windows") {
+		t.Error("DOS/Windows should preserve folder layout")
+	}
+	if PreserveROMDirectoryStructure("snes") || PreserveROMDirectoryStructure("gba") {
+		t.Error("cartridge platforms should flatten")
+	}
+	if !ShouldFlattenROMDirectory("snes") {
+		t.Error("SNES downloads should flatten")
+	}
+	if ShouldFlattenROMDirectory("scummvm") {
+		t.Error("ScummVM downloads should keep structure")
+	}
+}
+
+func TestOrganizeGameROMDirectoryPreservesDOS(t *testing.T) {
+	p, _, roms := newTestPipeline(t)
+	src := filepath.Join(t.TempDir(), "Doom")
+	writeFile(t, filepath.Join(src, "DOOM.EXE"), "exe")
+	writeFile(t, filepath.Join(src, "DOOM.WAD"), "wad")
+
+	dest, err := p.OrganizeGame(src, "DOS", "dos", false)
+	if err != nil {
+		t.Fatalf("OrganizeGame: %v", err)
+	}
+	want := filepath.Join(roms, "dos", "Doom")
+	if dest != want {
+		t.Errorf("dest = %q, want %q", dest, want)
+	}
+	if _, err := os.Stat(filepath.Join(want, "DOOM.EXE")); err != nil {
+		t.Fatalf("game tree not preserved: %v", err)
+	}
+}
+
+func TestOrganizeGameROMDirectoryFlattens(t *testing.T) {
+	p, _, roms := newTestPipeline(t)
+	src := filepath.Join(t.TempDir(), "Cartridge Collection")
+	writeFile(t, filepath.Join(src, "game.smc"), "romdata")
+
+	dest, err := p.OrganizeGame(src, "SNES", "snes", false)
+	if err != nil {
+		t.Fatalf("OrganizeGame: %v", err)
+	}
+	want := filepath.Join(roms, "snes", "game.smc")
+	if dest != want {
+		t.Errorf("dest = %q, want %q", dest, want)
+	}
+	if _, err := os.Stat(want); err != nil {
+		t.Fatalf("destination file missing: %v", err)
+	}
+	if pathExists(filepath.Join(roms, "snes", "Cartridge Collection")) {
+		t.Error("release folder name was preserved in the ROM library")
+	}
+}
+
 func TestOrganizeGameROM(t *testing.T) {
 	p, _, roms := newTestPipeline(t)
 	src := filepath.Join(t.TempDir(), "Chrono Trigger (USA).sfc")

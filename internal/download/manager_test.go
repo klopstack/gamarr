@@ -137,11 +137,11 @@ func TestDownloadTorrentQBitFullFlow(t *testing.T) {
 		t.Errorf("detail = %q, want RomM (SNES)", detail)
 	}
 
-	dest := filepath.Join(cfg.GamesRomsPath, "snes", "Super Game (USA)")
-	if !pathExists(filepath.Join(dest, "game.sfc")) {
+	dest := filepath.Join(cfg.GamesRomsPath, "snes", "game.sfc")
+	if !pathExists(dest) {
 		t.Errorf("game file not moved to %s", dest)
 	}
-	if !pathExists(filepath.Join(dest, ".gamarr.json")) {
+	if !pathExists(dest + ".gamarr.json") {
 		t.Error("metadata sidecar not written")
 	}
 	if pathExists(content) {
@@ -425,7 +425,7 @@ func TestOrganizeGame(t *testing.T) {
 		if slug, _ := job["platform_slug"].(string); slug != "gba" {
 			t.Errorf("platform_slug = %q, want gba", slug)
 		}
-		if !pathExists(filepath.Join(m.cfg.GamesRomsPath, "gba", "handheld-game", "game.gba")) {
+		if !pathExists(filepath.Join(m.cfg.GamesRomsPath, "gba", "game.gba")) {
 			t.Error("ROM not moved to gba library dir")
 		}
 	})
@@ -457,7 +457,7 @@ func TestOrganizeGame(t *testing.T) {
 		if status, _ := job["status"].(string); status != "completed" {
 			t.Errorf("status = %q, want completed", status)
 		}
-		if !pathExists(filepath.Join(m.cfg.GamesRomsPath, "snes", "SavedGame", "rom.sfc")) {
+		if !pathExists(filepath.Join(m.cfg.GamesRomsPath, "snes", "rom.sfc")) {
 			t.Error("ROM not moved from save path")
 		}
 	})
@@ -1240,63 +1240,61 @@ func TestDDLSourcesRoundTrip(t *testing.T) {
 	}
 }
 
-func TestExtractArchives(t *testing.T) {
-	t.Run("corrupt archive removed and skipped", func(t *testing.T) {
-		dir := t.TempDir()
-		writeFileT(t, filepath.Join(dir, "broken.zip"), []byte("this is not a zip"))
-		extracted := extractArchives(dir)
-		if len(extracted) != 0 {
-			t.Errorf("extracted = %v, want none for corrupt archive", extracted)
-		}
-		if pathExists(filepath.Join(dir, "broken.zip.extracted")) {
-			t.Error("failed extraction dir should be cleaned up")
+func TestExtractPoolArchives(t *testing.T) {
+	cfg := newTestConfig(t)
+	m := New(cfg, newTestJobs(t), nil)
+	dir := t.TempDir()
+	cfg.GamesRomsPath = dir
+
+	t.Run("invalid slug rejected", func(t *testing.T) {
+		if _, err := m.ExtractPoolArchives("../escape"); err == nil {
+			t.Fatal("expected error for path traversal slug")
 		}
 	})
 
-	t.Run("already extracted archive skipped", func(t *testing.T) {
-		dir := t.TempDir()
-		writeFileT(t, filepath.Join(dir, "done.zip"), []byte("junk"))
-		if err := os.MkdirAll(filepath.Join(dir, "done.zip.extracted"), 0755); err != nil {
-			t.Fatal(err)
-		}
-		if extracted := extractArchives(dir); len(extracted) != 0 {
-			t.Errorf("extracted = %v, want none (already extracted)", extracted)
+	t.Run("missing platform dir", func(t *testing.T) {
+		if _, err := m.ExtractPoolArchives("ghost"); err == nil {
+			t.Fatal("expected error for missing platform")
 		}
 	})
 
-	t.Run("recurses into subdirectories", func(t *testing.T) {
-		dir := t.TempDir()
-		writeFileT(t, filepath.Join(dir, "sub", "inner.rar"), []byte("not a rar"))
-		// Should not panic and should not extract anything (unrar fails/missing).
-		if extracted := extractArchives(dir); len(extracted) != 0 {
-			t.Errorf("extracted = %v, want none", extracted)
-		}
-	})
-
-	t.Run("valid zip extracted when 7z available", func(t *testing.T) {
+	t.Run("extracts under platform slug", func(t *testing.T) {
 		if _, err := exec.LookPath("7z"); err != nil {
 			t.Skip("7z not installed")
 		}
-		dir := t.TempDir()
-		zipPath := filepath.Join(dir, "good.zip")
+		plat := filepath.Join(dir, "c64")
+		if err := os.MkdirAll(plat, 0755); err != nil {
+			t.Fatal(err)
+		}
+		zipPath := filepath.Join(plat, "game.zip")
 		f, err := os.Create(zipPath)
 		if err != nil {
 			t.Fatal(err)
 		}
 		zw := zip.NewWriter(f)
-		w, _ := zw.Create("inside.txt")
-		w.Write([]byte("hello"))
+		w, _ := zw.Create("game.d64")
+		w.Write([]byte("rom"))
 		zw.Close()
 		f.Close()
 
-		extracted := extractArchives(dir)
+		extracted, err := m.ExtractPoolArchives("c64")
+		if err != nil {
+			t.Fatal(err)
+		}
 		if len(extracted) != 1 {
 			t.Fatalf("extracted = %v, want 1", extracted)
 		}
-		if !pathExists(filepath.Join(dir, "good.zip.extracted", "inside.txt")) {
-			t.Error("extracted file missing")
-		}
 	})
+}
+
+func TestLoadSettingsEnvExtractArchivesOverridesStoredFalse(t *testing.T) {
+	cfg := newTestConfig(t)
+	cfg.ExtractArchives = true
+	m := New(cfg, newTestJobs(t), nil)
+	m.SaveSettings(&Settings{ExtractArchives: false})
+	if !m.LoadSettings().ExtractArchives {
+		t.Error("EXTRACT_ARCHIVES env should enable extraction even when settings file says false")
+	}
 }
 
 func TestMaybeExtractArchives(t *testing.T) {
@@ -1416,7 +1414,7 @@ func TestNyaaSwitchROMTaggedPCImportsAsSwitch(t *testing.T) {
 	if isPC, _ := job["is_pc"].(bool); isPC {
 		t.Error("job still marked is_pc after a .nsp was found")
 	}
-	wantPath := filepath.Join(cfg.GamesRomsPath, "switch", "Zelda TOTK", "Zelda.TOTK.nsp")
+	wantPath := filepath.Join(cfg.GamesRomsPath, "switch", "Zelda.TOTK.nsp")
 	if _, err := os.Stat(wantPath); err != nil {
 		t.Errorf("ROM not in the Switch library: %v", err)
 	}
@@ -1693,6 +1691,9 @@ func TestRomImportRetriesWhenTheClientMovesThePayload(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(published, "game.sfc"), []byte("rom-data"), 0644); err != nil {
 		t.Fatalf("write game.sfc: %v", err)
 	}
+	if err := os.WriteFile(filepath.Join(stale, "game.sfc"), []byte("rom-data"), 0644); err != nil {
+		t.Fatalf("write game.sfc: %v", err)
+	}
 
 	qm.setTorrents([]qbit.Torrent{{
 		Name: "Super Game (USA)", Hash: "rom-hash", Progress: 1.0,
@@ -1732,7 +1733,7 @@ func TestRomImportRetriesWhenTheClientMovesThePayload(t *testing.T) {
 		t.Errorf("job = {detail:%q error:%q}, want the moved receipt and nothing left over from a failed attempt",
 			detail, errMsg)
 	}
-	if !pathExists(filepath.Join(cfg.GamesRomsPath, "snes", "Super Game (USA)", "game.sfc")) {
+	if !pathExists(filepath.Join(cfg.GamesRomsPath, "snes", "game.sfc")) {
 		t.Error("game file not at the ROM destination after the retried import")
 	}
 }
@@ -1795,7 +1796,7 @@ func TestImportHoldsOneCycleWhenTheSourceDepletes(t *testing.T) {
 		t.Errorf("import attempts = %d, want the held one retried at the published path", attempts)
 	}
 	waitJobStatus(t, m.Jobs(), jobID, "completed", minPollTimeout)
-	if !pathExists(filepath.Join(cfg.GamesRomsPath, "snes", "Super Game (USA)", "game1.sfc")) {
+	if !pathExists(filepath.Join(cfg.GamesRomsPath, "snes", "game1.sfc")) {
 		t.Error("game file not at the ROM destination after the held import")
 	}
 }
@@ -1887,13 +1888,17 @@ func TestRomImportClearsOnlyItsOwnDebrisBeforeTheRetry(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(published, "game1.sfc"), []byte("rom-data"), 0644); err != nil {
 			t.Fatalf("write game1.sfc: %v", err)
 		}
+		if err := os.WriteFile(filepath.Join(stale, "game1.sfc"), []byte("rom-data"), 0644); err != nil {
+			t.Fatalf("write game1.sfc: %v", err)
+		}
 
-		dest := filepath.Join(cfg.GamesRomsPath, "snes", "Super Game (USA)")
+		destDir := filepath.Join(cfg.GamesRomsPath, "snes")
+		dest := filepath.Join(destDir, "game1.sfc")
+		if err := os.MkdirAll(destDir, 0755); err != nil {
+			t.Fatalf("mkdir %s: %v", destDir, err)
+		}
 		if preSeed != "" {
-			if err := os.MkdirAll(dest, 0755); err != nil {
-				t.Fatalf("mkdir dest: %v", err)
-			}
-			if err := os.WriteFile(filepath.Join(dest, preSeed), []byte("keep me"), 0644); err != nil {
+			if err := os.WriteFile(filepath.Join(destDir, preSeed), []byte("keep me"), 0644); err != nil {
 				t.Fatalf("write %s: %v", preSeed, err)
 			}
 		}
@@ -1917,15 +1922,16 @@ func TestRomImportClearsOnlyItsOwnDebrisBeforeTheRetry(t *testing.T) {
 		// move takes the staging tree away under it.
 		realImport := fileImport
 		attempts := 0
-		fileImport = func(src, dest string, opt fileops.Options) error {
+		fileImport = func(src, destPath string, opt fileops.Options) error {
 			attempts++
 			if attempts == 1 {
-				os.MkdirAll(dest, 0755)
-				os.WriteFile(filepath.Join(dest, "partial.sfc"), []byte("debris"), 0644)
+				if err := os.WriteFile(destPath, []byte("debris"), 0644); err != nil {
+					return err
+				}
 				os.RemoveAll(src)
 				return fmt.Errorf("copy of %s interrupted by the client", src)
 			}
-			return realImport(src, dest, opt)
+			return realImport(src, destPath, opt)
 		}
 		t.Cleanup(func() { fileImport = realImport })
 		return m, jobID, dest, captured, &attempts
@@ -1940,11 +1946,8 @@ func TestRomImportClearsOnlyItsOwnDebrisBeforeTheRetry(t *testing.T) {
 			t.Fatalf("import attempts = %d, want the debris attempt retried", *attempts)
 		}
 		waitJobStatus(t, m.Jobs(), jobID, "completed", minPollTimeout)
-		if pathExists(filepath.Join(dest, "partial.sfc")) {
-			t.Error("the failed attempt's debris survived into the published import")
-		}
-		if !pathExists(filepath.Join(dest, "game1.sfc")) {
-			t.Error("game file not at the ROM destination after the retried import")
+		if data, err := os.ReadFile(dest); err != nil || string(data) != "rom-data" {
+			t.Errorf("the failed attempt's debris survived into the published import: %q (err %v)", data, err)
 		}
 	})
 
@@ -1957,10 +1960,10 @@ func TestRomImportClearsOnlyItsOwnDebrisBeforeTheRetry(t *testing.T) {
 			t.Fatalf("import attempts = %d, want the failure handled and the import retried", *attempts)
 		}
 		waitJobStatus(t, m.Jobs(), jobID, "completed", minPollTimeout)
-		if !pathExists(filepath.Join(dest, "marker.txt")) {
+		if !pathExists(filepath.Join(filepath.Dir(dest), "marker.txt")) {
 			t.Error("the pre-existing dest was removed by the failure handling")
 		}
-		if !pathExists(filepath.Join(dest, "game1.sfc")) {
+		if !pathExists(dest) {
 			t.Error("game file not at the ROM destination after the retried import")
 		}
 	})
@@ -2001,7 +2004,7 @@ func TestTerminalRomFailureClearsItsOwnDebrisSoRetryWorks(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(content, "a.sfc"), []byte("rom"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	dest := filepath.Join(cfg.GamesRomsPath, "snes", "Broken ROM")
+	dest := filepath.Join(cfg.GamesRomsPath, "snes", "a.sfc")
 
 	// A terminal failure - the content tree stays put, so this is not the
 	// publish race - that has already written part of its destination.
@@ -2010,10 +2013,7 @@ func TestTerminalRomFailureClearsItsOwnDebrisSoRetryWorks(t *testing.T) {
 	fileImport = func(src, destPath string, opt fileops.Options) error {
 		attempts++
 		if attempts == 1 {
-			if err := os.MkdirAll(destPath, 0755); err != nil {
-				return err
-			}
-			if err := os.WriteFile(filepath.Join(destPath, "a.sfc"), []byte("half"), 0644); err != nil {
+			if err := os.WriteFile(destPath, []byte("half"), 0644); err != nil {
 				return err
 			}
 			return errors.New("locked: permission denied")
@@ -2040,7 +2040,7 @@ func TestTerminalRomFailureClearsItsOwnDebrisSoRetryWorks(t *testing.T) {
 	if status, _ := job["status"].(string); status != "completed" {
 		t.Fatalf("retry job = %+v, want completed", job)
 	}
-	if got, err := os.ReadFile(filepath.Join(dest, "a.sfc")); err != nil || string(got) != "rom" {
+	if got, err := os.ReadFile(dest); err != nil || string(got) != "rom" {
 		t.Errorf("destination = %q (err %v), want the real content", got, err)
 	}
 }
@@ -2100,7 +2100,7 @@ func TestConcurrentImportsToOneDestinationAreSerialised(t *testing.T) {
 		t.Fatalf("peak concurrent imports to one destination = %d, want 1", got)
 	}
 	// And the destination holds one import's content, not a mixture.
-	if _, err := os.Stat(filepath.Join(cfg.GamesRomsPath, "snes", "Same Name", "game.sfc")); err != nil {
+	if _, err := os.Stat(filepath.Join(cfg.GamesRomsPath, "snes", "game.sfc")); err != nil {
 		t.Errorf("destination content missing after two colliding imports: %v", err)
 	}
 }

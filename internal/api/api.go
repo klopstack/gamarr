@@ -106,6 +106,7 @@ func NewRouter(cfg *config.Config, mgr *download.Manager, mon *monitor.GamarrMon
 	// matching the natural filter (failed for retry, active for cancel).
 	r.Post("/api/admin/bulk/retry", s.handleBulkRetry)
 	r.Post("/api/admin/bulk/cancel", s.handleBulkCancel)
+	r.Post("/api/admin/extract-archives", s.handleExtractArchives)
 	r.Post("/api/wishlist/bulk-delete", s.handleBulkDeleteWishlist)
 
 	// OpenAPI 3.1 spec — AI agents / tooling can introspect this to

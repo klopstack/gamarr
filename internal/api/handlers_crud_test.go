@@ -489,6 +489,30 @@ func TestBulkRetryAndCancel(t *testing.T) {
 	})
 }
 
+func TestExtractArchivesEndpoint(t *testing.T) {
+	roms := t.TempDir()
+	env := newTestEnv(t, func(c *config.Config) {
+		c.GamesRomsPath = roms
+	})
+
+	t.Run("missing platform slug returns 400", func(t *testing.T) {
+		rr := env.do("POST", "/api/admin/extract-archives", `{"platform_slug":"nope"}`)
+		wantStatus(t, rr, 400)
+	})
+
+	t.Run("empty body scans entire pool", func(t *testing.T) {
+		rr := env.do("POST", "/api/admin/extract-archives", "")
+		wantStatus(t, rr, 200)
+		m := decodeMap(t, rr)
+		if m["success"] != true {
+			t.Errorf("success = %v", m["success"])
+		}
+		if _, ok := m["extracted"]; !ok {
+			t.Error("response missing extracted count")
+		}
+	})
+}
+
 // ── DDL sources ────────────────────────────────────────────────────────────────
 
 func TestDDLSourcesCRUD(t *testing.T) {

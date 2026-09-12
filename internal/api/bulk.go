@@ -13,6 +13,10 @@ type bulkJobRequest struct {
 	JobIDs []string `json:"job_ids"`
 }
 
+type extractArchivesRequest struct {
+	PlatformSlug string `json:"platform_slug"`
+}
+
 // jobFailedStatuses are job.status values treated as "failed" for the retry
 // bulk op. Mirrors the per-job retry handler's behavior.
 var jobFailedStatuses = map[string]bool{
@@ -131,6 +135,29 @@ func (s *Server) handleBulkCancel(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleExtractArchives extracts zip/7z/rar archives already in the ROM pool.
+//
+//	POST /api/admin/extract-archives
+//	  body: {}                              -> entire GAMES_ROMS_PATH tree
+//	  body: {"platform_slug": "c64"}         -> one platform folder
+func (s *Server) handleExtractArchives(w http.ResponseWriter, r *http.Request) {
+	req, err := readExtractArchivesRequest(r)
+	if err != nil {
+		writeError(w, 400, err.Error())
+		return
+	}
+	extracted, err := s.mgr.ExtractPoolArchives(req.PlatformSlug)
+	if err != nil {
+		writeError(w, 400, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]interface{}{
+		"success":   true,
+		"extracted": len(extracted),
+		"archives":  extracted,
+	})
+}
+
 // bulkWishlistRequest deletes many wishlist items at once.
 type bulkWishlistRequest struct {
 	IDs []int64 `json:"ids"`
@@ -217,6 +244,27 @@ func readBulkJobRequest(r *http.Request) (bulkJobRequest, error) {
 	}
 	if len(req.JobIDs) > 500 {
 		return req, errTooManyIDs
+	}
+	return req, nil
+}
+
+func readExtractArchivesRequest(r *http.Request) (extractArchivesRequest, error) {
+	var req extractArchivesRequest
+	if r.ContentLength == 0 {
+		return req, nil
+	}
+	if ct := r.Header.Get("Content-Type"); ct != "" {
+		base := ct
+		if idx := strings.Index(base, ";"); idx >= 0 {
+			base = base[:idx]
+		}
+		base = strings.TrimSpace(strings.ToLower(base))
+		if base != "application/json" {
+			return req, errInvalidContentType
+		}
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return req, errInvalidBody
 	}
 	return req, nil
 }

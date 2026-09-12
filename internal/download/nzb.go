@@ -10,6 +10,7 @@ import (
 
 	"gamarr/internal/fileops"
 	"gamarr/internal/nzbget"
+	"gamarr/internal/organize"
 	"gamarr/internal/sabnzbd"
 )
 
@@ -268,7 +269,7 @@ func (m *Manager) organizeNZBDownloadWithClient(jobID, storagePath, title, platf
 		// already gone. When the content is sitting at its destination the
 		// import did succeed, so finish the job instead of reporting a
 		// completed import as a failure.
-		if dest, mode, ok := m.nzbImportedDest(storagePath, platSlug, isPC); ok {
+		if dest, mode, ok := m.nzbImportedDest(jobID, storagePath, platSlug, isPC); ok {
 			m.completeNZBOrganize(jobID, dest, title, platf, platSlug, isPC, sourceClient, mode)
 			return
 		}
@@ -277,6 +278,17 @@ func (m *Manager) organizeNZBDownloadWithClient(jobID, storagePath, title, platf
 	}
 
 	platf, platSlug, isPC = m.resolvePlatform(jobID, storagePath, title, platf, platSlug, isPC)
+
+	if !isPC && platSlug != "" {
+		if fi, err := os.Stat(storagePath); err == nil && fi.IsDir() && organize.ShouldFlattenROMDirectory(platSlug) {
+			importName := sanitizeFilename(filepath.Base(storagePath))
+			if importName == "" || importName == "." {
+				importName = sanitizeFilename(title)
+			}
+			m.importFlattenedROMDirectory(jobID, storagePath, importName, platf, platSlug, "nzb", sourceClient, "nzb:"+storagePath, 1)
+			return
+		}
+	}
 
 	dest, ok := m.nzbDestPath(storagePath, platSlug, isPC)
 	if !ok {
@@ -337,13 +349,32 @@ func (m *Manager) organizeNZBDownloadWithClient(jobID, storagePath, title, platf
 // staging path is gone. Both vault layouts are checked, since the archive
 // option may have been toggled between the import and a restart that
 // re-enters organize.
-func (m *Manager) nzbImportedDest(storagePath, platSlug string, isPC bool) (string, fileops.Mode, bool) {
+func (m *Manager) nzbImportedDest(jobID, storagePath, platSlug string, isPC bool) (string, fileops.Mode, bool) {
+	if jobID != "" {
+		if job, ok := m.jobs.Get(jobID); ok {
+			if lp, _ := job["library_path"].(string); lp != "" && pathExists(lp) {
+				return lp, fileops.ModeMove, true
+			}
+		}
+	}
 	dest, ok := m.nzbDestPath(storagePath, platSlug, isPC)
 	if !ok {
 		return "", "", false
 	}
 	if pathExists(dest) {
 		return dest, fileops.ModeMove, true
+	}
+	if !isPC && platSlug != "" && pathExists(storagePath) {
+		for _, src := range organize.CollectROMFiles(storagePath) {
+			flat := filepath.Join(m.cfg.GamesRomsPath, platSlug, sanitizeFilename(filepath.Base(src)))
+			if pathExists(flat) {
+				return flat, fileops.ModeMove, true
+			}
+		}
+		legacy := filepath.Join(m.cfg.GamesRomsPath, platSlug, sanitizeFilename(filepath.Base(storagePath)))
+		if pathExists(legacy) {
+			return legacy, fileops.ModeMove, true
+		}
 	}
 	if isPC {
 		// An archive import is always a copy, so the verb has to say so even on

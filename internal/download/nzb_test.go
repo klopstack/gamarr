@@ -172,18 +172,18 @@ func TestDownloadNZBCompletedFlow(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	dest := filepath.Join(cfg.GamesRomsPath, "snes", "Usenet Game")
+	dest := filepath.Join(cfg.GamesRomsPath, "snes", "rom.sfc")
 	waitFor(t, 10*time.Second, "nzb library tracking", func() bool {
-		return jobs.LibraryHasSourceID("nzb:" + dest)
+		return jobs.LibraryHasSourceID("nzb:" + storage)
 	})
 	job := waitJobStatus(t, jobs, jobID, "completed", 5*time.Second)
 	if detail, _ := job["detail"].(string); !strings.Contains(detail, "RomM (SNES)") {
 		t.Errorf("detail = %q, want RomM (SNES)", detail)
 	}
-	if !pathExists(filepath.Join(dest, "rom.sfc")) {
+	if !pathExists(dest) {
 		t.Error("nzb content not moved to library")
 	}
-	if !pathExists(filepath.Join(dest, ".gamarr.json")) {
+	if !pathExists(dest + ".gamarr.json") {
 		t.Error("sidecar not written")
 	}
 	if nzoID, _ := job["nzo_id"].(string); nzoID != sab.nzoID {
@@ -233,15 +233,15 @@ func TestDownloadNZBGetCompletedFlow(t *testing.T) {
 		t.Fatalf("DownloadNZB: %v", err)
 	}
 
-	dest := filepath.Join(cfg.GamesRomsPath, "gba", "NZBGet Game")
+	dest := filepath.Join(cfg.GamesRomsPath, "gba", "rom.gba")
 	waitFor(t, 10*time.Second, "NZBGet library tracking", func() bool {
-		return jobs.LibraryHasSourceID("nzb:" + dest)
+		return jobs.LibraryHasSourceID("nzb:" + storage)
 	})
 	job := waitJobStatus(t, jobs, jobID, "completed", 5*time.Second)
 	if client, _ := job["source_client"].(string); client != "nzbget" {
 		t.Errorf("source_client=%q, want nzbget", client)
 	}
-	if !pathExists(filepath.Join(dest, "rom.gba")) {
+	if !pathExists(dest) {
 		t.Error("NZBGet content not moved to library")
 	}
 	if len(mock.lastParams) != 11 || mock.lastParams[2] != "games" {
@@ -317,12 +317,12 @@ func TestRecoverOrphanedNZBDownloads(t *testing.T) {
 	m := New(cfg, jobs, nil)
 	m.RecoverOrphanedNZBDownloads()
 
-	dest := filepath.Join(cfg.GamesRomsPath, "gba", "Recovered NZB")
+	dest := filepath.Join(cfg.GamesRomsPath, "gba", "rom.gba")
 	waitFor(t, 5*time.Second, "recovered NZBGet watcher", func() bool {
 		job, ok := jobs.Get(jobID)
 		return ok && job["status"] == "completed"
 	})
-	if !pathExists(filepath.Join(dest, "rom.gba")) {
+	if !pathExists(dest) {
 		t.Fatal("recovered NZBGet content was not organized")
 	}
 }
@@ -394,8 +394,9 @@ func TestOrganizeNZBDownload(t *testing.T) {
 	t.Run("already moved content completes", func(t *testing.T) {
 		m, jobID := newFixture(t)
 		storage := filepath.Join(t.TempDir(), "Recovered Game")
-		dest := filepath.Join(m.cfg.GamesRomsPath, "gba", "Recovered Game")
-		writeFileT(t, filepath.Join(dest, "rom.gba"), []byte("rom"))
+		dest := filepath.Join(m.cfg.GamesRomsPath, "gba", "rom.gba")
+		writeFileT(t, dest, []byte("rom"))
+		m.Jobs().Set(jobID, map[string]interface{}{"library_path": dest})
 
 		m.organizeNZBDownloadWithClient(jobID, storage, "Recovered Game", "GBA", "gba", false, "nzbget")
 
@@ -457,7 +458,7 @@ func TestOrganizeNZBDownload(t *testing.T) {
 
 		m.organizeNZBDownloadWithClient(jobID, storage, "Cartridge Collection", "", "", false, "sabnzbd")
 
-		dest := filepath.Join(m.cfg.GamesRomsPath, "snes", "Cartridge Collection", "game.smc")
+		dest := filepath.Join(m.cfg.GamesRomsPath, "snes", "game.smc")
 		if !pathExists(dest) {
 			t.Errorf("usenet import did not detect the platform from its files: %s not written", dest)
 		}
@@ -476,7 +477,7 @@ func TestOrganizeNZBDownload(t *testing.T) {
 
 		m.organizeNZBDownloadWithClient(jobID, storage, "Tagged PC", "PC", "", true, "sabnzbd")
 
-		dest := filepath.Join(m.cfg.GamesRomsPath, "switch", "Tagged PC", "game.nsp")
+		dest := filepath.Join(m.cfg.GamesRomsPath, "switch", "game.nsp")
 		if !pathExists(dest) {
 			t.Errorf("usenet import did not reclassify a PC-tagged console ROM: %s not written", dest)
 		}

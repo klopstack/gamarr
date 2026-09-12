@@ -633,7 +633,7 @@ func TestOrganizeNZBNeverArchivesROMs(t *testing.T) {
 
 	m.organizeNZBDownload(jobID, storage, "Rom Game", "SNES", "snes", false)
 
-	if !pathExists(filepath.Join(cfg.GamesRomsPath, "snes", "Rom Game", "rom.sfc")) {
+	if !pathExists(filepath.Join(cfg.GamesRomsPath, "snes", "rom.sfc")) {
 		t.Error("ROM not imported as a raw file")
 	}
 	if pathExists(filepath.Join(cfg.GamesRomsPath, "snes", "Rom Game.tar")) {

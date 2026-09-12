@@ -97,7 +97,65 @@ func (p *Pipeline) organizePC(sourcePath string) (string, error) {
 	return dest, nil
 }
 
+// IsROMArchiveExt reports whether ext names a ROM or disc image Gamarr imports.
+func IsROMArchiveExt(ext string) bool {
+	switch strings.ToLower(ext) {
+	case ".zip", ".7z", ".rar", ".rvz", ".iso", ".chd", ".wbfs", ".gcz",
+		".cso", ".nsp", ".xci", ".nsz", ".cia", ".nds", ".gba", ".gb", ".gbc",
+		".nes", ".sfc", ".smc", ".n64", ".z64", ".v64", ".cue", ".bin",
+		".pbp", ".wad", ".wux":
+		return true
+	default:
+		return false
+	}
+}
+
+// PreserveROMDirectoryStructure reports platforms whose RomM library entries
+// must keep a game's folder layout (DOS installs, ScummVM, Amiga disks, etc.).
+func PreserveROMDirectoryStructure(platformSlug string) bool {
+	switch strings.ToLower(strings.TrimSpace(platformSlug)) {
+	case "dos", "windows", "scummvm", "amiga", "c64", "acpc", "msx", "msx2", "zxs":
+		return true
+	default:
+		return false
+	}
+}
+
+// ShouldFlattenROMDirectory reports whether a finished download folder should
+// be flattened into roms/{slug}/{basename}. Console cartridges yes; DOS no.
+func ShouldFlattenROMDirectory(platformSlug string) bool {
+	return !PreserveROMDirectoryStructure(platformSlug)
+}
+
+// CollectROMFiles walks a download folder and returns importable ROM paths.
+// Structure A keeps roms/{slug}/{basename}, so release folders are flattened.
+func CollectROMFiles(root string) []string {
+	var out []string
+	_ = filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
+		if err != nil || info == nil || info.IsDir() {
+			return nil
+		}
+		if !IsROMArchiveExt(filepath.Ext(p)) {
+			return nil
+		}
+		out = append(out, p)
+		return nil
+	})
+	return out
+}
+
 func (p *Pipeline) organizeROM(sourcePath, platformSlug string) (string, error) {
+	fi, err := os.Stat(sourcePath)
+	if err != nil {
+		return sourcePath, err
+	}
+	if fi.IsDir() {
+		if PreserveROMDirectoryStructure(platformSlug) {
+			return p.organizeROMStructured(sourcePath, platformSlug)
+		}
+		return p.organizeROMDirectory(sourcePath, platformSlug)
+	}
+
 	destDir := filepath.Join(p.cfg.GamesRomsPath, platformSlug)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return sourcePath, err
@@ -119,6 +177,46 @@ func (p *Pipeline) organizeROM(sourcePath, platformSlug string) (string, error) 
 
 	slog.Info("ROM organized", "source", sourcePath, "dest", dest, "platform", platformSlug)
 	return dest, nil
+}
+
+func (p *Pipeline) organizeROMStructured(sourcePath, platformSlug string) (string, error) {
+	destDir := filepath.Join(p.cfg.GamesRomsPath, platformSlug)
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return sourcePath, err
+	}
+	dest := filepath.Join(destDir, filepath.Base(sourcePath))
+	if exists, _ := DuplicateCheck(dest); exists {
+		return dest, fmt.Errorf("%w: %s", fileops.ErrDestinationOccupied, dest)
+	}
+	if err := p.importContent(sourcePath, dest); err != nil {
+		return sourcePath, err
+	}
+	slog.Info("structured ROM organized", "source", sourcePath, "dest", dest, "platform", platformSlug)
+	return dest, nil
+}
+
+func (p *Pipeline) organizeROMDirectory(sourcePath, platformSlug string) (string, error) {
+	files := CollectROMFiles(sourcePath)
+	if len(files) == 0 {
+		return sourcePath, fmt.Errorf("no ROM files found in %s", sourcePath)
+	}
+	destDir := filepath.Join(p.cfg.GamesRomsPath, platformSlug)
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return sourcePath, err
+	}
+	var lastDest string
+	for _, src := range files {
+		dest := filepath.Join(destDir, filepath.Base(src))
+		if exists, _ := DuplicateCheck(dest); exists {
+			return dest, fmt.Errorf("%w: %s", fileops.ErrDestinationOccupied, dest)
+		}
+		if err := p.importContent(src, dest); err != nil {
+			return sourcePath, err
+		}
+		lastDest = dest
+	}
+	slog.Info("ROM directory organized", "source", sourcePath, "count", len(files), "platform", platformSlug)
+	return lastDest, nil
 }
 
 // DetectPlatform tries to detect the platform from a file extension.

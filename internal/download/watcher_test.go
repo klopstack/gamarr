@@ -186,7 +186,7 @@ func TestWatcherImportTorrentPlatformHint(t *testing.T) {
 
 	w.importTorrent(torrent) // synchronous
 
-	if !pathExists(filepath.Join(w.cfg.GamesRomsPath, "snes", "Super Metroid", "rom.sfc")) {
+	if !pathExists(filepath.Join(w.cfg.GamesRomsPath, "snes", "rom.sfc")) {
 		t.Error("content not imported into snes library dir")
 	}
 	if _, ok := w.imported.Load("sm-hash"); !ok {
