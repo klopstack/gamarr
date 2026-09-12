@@ -482,6 +482,20 @@ func TestOrganizeNZBDownload(t *testing.T) {
 			t.Errorf("usenet import did not reclassify a PC-tagged console ROM: %s not written", dest)
 		}
 	})
+
+	t.Run("a PC-tagged PSX CHD is reclassified from title hints", func(t *testing.T) {
+		m, jobID := newFixture(t)
+		storage := filepath.Join(t.TempDir(), "WWF WrestleMania (USA).chd")
+		writeFileT(t, storage, []byte("rom"))
+
+		m.organizeNZBDownloadWithClient(jobID, storage,
+			"[Cocorico.PSX.Romset] WWF WrestleMania (USA)", "PC", "", true, "sabnzbd")
+
+		dest := filepath.Join(m.cfg.GamesRomsPath, "psx", "WWF WrestleMania (USA).chd")
+		if !pathExists(dest) {
+			t.Errorf("PSX CHD not reclassified out of vault path: %s not written", dest)
+		}
+	})
 }
 
 func TestRetryJob(t *testing.T) {

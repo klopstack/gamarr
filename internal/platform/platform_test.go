@@ -366,3 +366,41 @@ func TestConsoleROMExtsExcludePCAmbiguousFormats(t *testing.T) {
 		}
 	}
 }
+
+func TestDetectMisclassifiedPCTaggedConsole(t *testing.T) {
+	tests := []struct {
+		name     string
+		files    []string
+		title    string
+		wantSlug string
+		wantOK   bool
+	}{
+		{"psx chd from title", []string{"game.chd"}, "[Cocorico.PSX.Romset] WWF", "psx", true},
+		{"psx chd without title hint", []string{"game.chd"}, "Some Game", "psx", true},
+		{"pc repack with doom wad", []string{"setup.exe", "base.wad"}, "Terraria", "", false},
+		{"pc repack bundling nes", []string{"setup.exe", "extras/bonus.nes"}, "Terraria", "", false},
+		{"switch nsp", []string{"game.nsp"}, "Tagged PC", "switch", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			for _, f := range tt.files {
+				full := filepath.Join(dir, f)
+				if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(full, []byte("x"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			info, ok := DetectMisclassifiedPCTaggedConsole(dir, tt.title)
+			if ok != tt.wantOK {
+				t.Fatalf("ok = %v, want %v", ok, tt.wantOK)
+			}
+			if ok && info.Slug != tt.wantSlug {
+				t.Errorf("slug = %q, want %q", info.Slug, tt.wantSlug)
+			}
+		})
+	}
+}

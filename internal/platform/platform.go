@@ -266,6 +266,52 @@ func DetectConsoleROM(contentPath string) (PlatformInfo, bool) {
 	return PlatformInfo{}, false
 }
 
+// discImageExts are formats PC repacks do not ship loose alongside setup.exe.
+// Usenet 4050 / PC/Games often carries lone console disc images in these formats.
+var discImageExts = map[string]bool{
+	".chd": true, ".iso": true, ".mdf": true, ".mds": true,
+	".img": true, ".cue": true, ".ecm": true, ".isz": true,
+}
+
+// DetectMisclassifiedPCTaggedConsole overturns a PC/Newznab-4050 tag when the
+// payload is clearly a console release. Narrower than DetectPlatformFromFiles:
+// .wad/.nes/.gba/etc. are excluded because PC games bundle them.
+func DetectMisclassifiedPCTaggedConsole(contentPath, title string) (PlatformInfo, bool) {
+	if info, ok := DetectConsoleROM(contentPath); ok {
+		return info, true
+	}
+	exts := collectExtensions(contentPath)
+	hasDisc := false
+	for ext := range exts {
+		if discImageExts[ext] {
+			hasDisc = true
+			break
+		}
+	}
+	if !hasDisc {
+		return PlatformInfo{}, false
+	}
+	titleLower := strings.ToLower(title)
+	for _, hint := range titleHints {
+		if hint.Pattern.MatchString(titleLower) {
+			slog.Info("reclassified PC-tagged disc image from title", "platform", hint.Info.Name)
+			return hint.Info, true
+		}
+	}
+	for ext := range exts {
+		switch ext {
+		case ".pbp", ".cso":
+			return PlatformInfo{Name: "PSP", Slug: "psp"}, true
+		case ".gdi", ".cdi":
+			return PlatformInfo{Name: "Dreamcast", Slug: "dc"}, true
+		case ".chd", ".iso", ".mdf", ".mds", ".img", ".cue", ".ecm", ".isz":
+			slog.Info("reclassified PC-tagged disc image from extension", "ext", ext)
+			return PlatformInfo{Name: "PS1", Slug: "psx"}, true
+		}
+	}
+	return PlatformInfo{}, false
+}
+
 // DetectPlatformFromFiles detects platform from file extensions and title keywords.
 func DetectPlatformFromFiles(contentPath, title string) (PlatformInfo, bool) {
 	exts := collectExtensions(contentPath)

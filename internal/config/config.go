@@ -5,6 +5,7 @@ package config
 import (
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -174,7 +175,7 @@ func Load() *Config {
 		envStr("GAMARR_SOURCES_URL", ""),
 	).ApplyEnvOverrides(os.Getenv)
 
-	return &Config{
+	cfg := &Config{
 		Sources: registry,
 
 		ProwlarrURL:    envStr("PROWLARR_URL", "http://prowlarr:9696"),
@@ -292,6 +293,19 @@ func Load() *Config {
 
 		AutoUpgradeEnabled: envBool("AUTO_UPGRADE_ENABLED", false),
 	}
+	if cfg.VaultOverlapsRomsLibrary() {
+		slog.Warn("GAMES_VAULT_PATH equals GAMES_ROMS_PATH — PC imports will land in the RomM ROM pool",
+			"vault", cfg.GamesVaultPath, "roms", cfg.GamesRomsPath)
+	}
+	return cfg
+}
+
+// VaultOverlapsRomsLibrary reports whether PC vault imports share the RomM pool.
+func (c *Config) VaultOverlapsRomsLibrary() bool {
+	if c == nil {
+		return false
+	}
+	return filepath.Clean(c.GamesVaultPath) == filepath.Clean(c.GamesRomsPath)
 }
 
 func (c *Config) HasAuth() bool {

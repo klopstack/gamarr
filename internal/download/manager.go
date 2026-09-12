@@ -1216,12 +1216,12 @@ func (m *Manager) resolvePlatform(jobID, contentPath, title, platf, platSlug str
 	// detections above are skipped once isPC is set, so without this a Nyaa
 	// Switch ROM imports into GameVault instead of the Switch ROM library.
 	if isPC {
-		if info, ok := platform.DetectConsoleROM(contentPath); ok {
+		if info, ok := platform.DetectMisclassifiedPCTaggedConsole(contentPath, title); ok {
 			platf, platSlug, isPC = info.Name, info.Slug, info.IsPC
 			m.jobs.UpdateMulti(jobID, map[string]interface{}{
 				"platform": platf, "platform_slug": platSlug, "is_pc": isPC,
 			})
-			slog.Info("reclassified PC-tagged download from its ROM files", "platform", platf)
+			slog.Info("reclassified PC-tagged download as console", "platform", platf)
 		}
 	}
 
@@ -1565,6 +1565,11 @@ func (m *Manager) organizeGame(jobID string, torrent *qbit.Torrent, platf, platS
 // move the download is dropped, but only once the published archive is
 // confirmed to stand in for it.
 func (m *Manager) importToVault(src string, wanted fileops.WantedFiles, selectionKnown bool) (dest string, mode fileops.Mode, archived bool, err error) {
+	if m.cfg.VaultOverlapsRomsLibrary() {
+		return "", fileops.ModeMove, false, fmt.Errorf(
+			"GAMES_VAULT_PATH must not equal GAMES_ROMS_PATH — PC imports would pollute the RomM pool at %s",
+			m.cfg.GamesRomsPath)
+	}
 	base := filepath.Join(m.cfg.GamesVaultPath, sanitizeFilename(filepath.Base(src)))
 	defer lockDest(base)()
 
